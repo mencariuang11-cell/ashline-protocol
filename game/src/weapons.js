@@ -1,0 +1,218 @@
+// Weapons and the buy catalog. Five original guns and three grenades, one sidearm you
+// always carry and one primary slot. Accuracy is the heart of it: spread is smallest
+// standing still and crouched, grows while moving or airborne, and blooms with each
+// shot before it settles — so the game rewards stopping, aiming and firing in bursts.
+import * as THREE from 'three';
+import { PALETTE } from './palette.js';
+
+export const WEAPONS = {
+  sidearm: { id: 'sidearm', name: 'P9 Sidearm', slot: 'sidearm', price: 0, damage: 26, headMult: 3.2, rpm: 360, mag: 12, reserve: 48, reload: 1.3, spreadStill: 0.006, spreadMove: 0.030, falloffFrom: 18, falloffTo: 46, pellets: 1, auto: false, kick: 0.010, sound: 'pistol', zoom: 0 },
+  scatter: { id: 'scatter', name: 'Mule Scattergun', slot: 'primary', price: 1100, damage: 9, headMult: 2.0, rpm: 66, mag: 6, reserve: 24, reload: 2.6, spreadStill: 0.045, spreadMove: 0.060, falloffFrom: 6, falloffTo: 20, pellets: 8, auto: false, kick: 0.034, sound: 'shotgun', zoom: 0 },
+  smg: { id: 'smg', name: 'Raptor-9 SMG', slot: 'primary', price: 1400, damage: 22, headMult: 2.6, rpm: 750, mag: 32, reserve: 96, reload: 1.9, spreadStill: 0.011, spreadMove: 0.034, falloffFrom: 14, falloffTo: 40, pellets: 1, auto: true, kick: 0.008, sound: 'smg', zoom: 0 },
+  carbine: { id: 'carbine', name: 'VK-7 Carbine', slot: 'primary', price: 2700, damage: 33, headMult: 3.4, rpm: 620, mag: 30, reserve: 90, reload: 2.1, spreadStill: 0.0035, spreadMove: 0.026, falloffFrom: 26, falloffTo: 70, pellets: 1, auto: true, kick: 0.013, sound: 'rifle', zoom: 0 },
+  longbow: { id: 'longbow', name: 'Longbow DMR', slot: 'primary', price: 4200, damage: 88, headMult: 2.2, rpm: 46, mag: 5, reserve: 20, reload: 2.8, spreadStill: 0.0006, spreadMove: 0.05, falloffFrom: 40, falloffTo: 110, pellets: 1, auto: false, kick: 0.045, sound: 'sniper', zoom: 26 },
+};
+export const GRENADES = {
+  shard: { id: 'shard', name: 'Shard Grenade', price: 300, cap: 2, blurb: 'Frag: bursts for heavy damage' },
+  flare: { id: 'flare', name: 'Flare Grenade', price: 200, cap: 2, blurb: 'Blinds whoever faces the pop' },
+  veil: { id: 'veil', name: 'Veil Grenade', price: 300, cap: 1, blurb: 'Smoke wall that breaks sightlines' },
+};
+export const GEAR = {
+  vest: { id: 'vest', name: 'Kevlar Vest', price: 650 },
+  vesthelm: { id: 'vesthelm', name: 'Vest + Helmet', price: 1000 },
+  // the Spike itself is carried by the player from spawn; no purchase needed
+};
+export const SHOP_ORDER = ['scatter', 'smg', 'carbine', 'longbow', 'vest', 'vesthelm', 'shard', 'flare', 'veil'];
+
+function buildViewModel(def, mats) {
+  const group = new THREE.Group();
+  const add = (w, h, d, x, y, z, mat = mats.body, rx = 0) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    mesh.position.set(x, y, z);
+    mesh.rotation.x = rx;
+    group.add(mesh);
+    return mesh;
+  };
+  if (def.id === 'sidearm') {
+    add(0.055, 0.09, 0.24, 0, 0, -0.08);
+    add(0.05, 0.11, 0.07, 0, -0.09, 0.03, mats.grip, 0.25);
+  } else if (def.id === 'scatter') {
+    add(0.07, 0.09, 0.62, 0, 0, -0.2);
+    add(0.055, 0.055, 0.34, 0, 0.01, -0.62, mats.dark);
+    add(0.075, 0.08, 0.2, 0, -0.045, -0.28, mats.wood);
+    add(0.06, 0.1, 0.18, 0, -0.03, 0.22, mats.wood);
+  } else if (def.id === 'smg') {
+    add(0.065, 0.1, 0.4, 0, 0, -0.12);
+    add(0.04, 0.04, 0.2, 0, 0.015, -0.42, mats.dark);
+    add(0.045, 0.17, 0.06, 0, -0.13, -0.05, mats.grip, 0.12);
+    add(0.05, 0.09, 0.06, 0, -0.08, 0.12, mats.grip, 0.3);
+  } else if (def.id === 'longbow') {
+    add(0.06, 0.09, 0.66, 0, 0, -0.24);
+    add(0.035, 0.035, 0.44, 0, 0.02, -0.76, mats.dark);
+    add(0.05, 0.15, 0.06, 0, -0.11, -0.08, mats.grip, 0.1);
+    add(0.055, 0.07, 0.2, 0, 0.1, -0.18, mats.dark);          // scope tube
+    add(0.07, 0.1, 0.24, 0, -0.02, 0.3, mats.wood);           // stock
+  } else {
+    add(0.07, 0.1, 0.5, 0, 0, -0.18);
+    add(0.04, 0.04, 0.3, 0, 0.02, -0.56, mats.dark);
+    add(0.045, 0.16, 0.06, 0, -0.12, -0.02, mats.grip, 0.15);
+    add(0.05, 0.09, 0.07, 0, -0.07, 0.16, mats.grip, 0.3);
+    add(0.02, 0.05, 0.02, 0, 0.085, -0.62, mats.dark);         // front post
+  }
+  group.position.set(0.26, -0.24, -0.5);
+  return group;
+}
+
+export function createLoadout(camera, audio) {
+  const mats = {
+    body: new THREE.MeshStandardMaterial({ color: 0x3c434c, roughness: 0.45, metalness: 0.55 }),
+    dark: new THREE.MeshStandardMaterial({ color: 0x22262c, roughness: 0.5, metalness: 0.5 }),
+    grip: new THREE.MeshStandardMaterial({ color: 0x59462e, roughness: 0.9 }),
+    wood: new THREE.MeshStandardMaterial({ color: 0x6e4f2a, roughness: 0.85 }),
+  };
+  const models = {};
+  for (const def of Object.values(WEAPONS)) {
+    models[def.id] = buildViewModel(def, mats);
+    models[def.id].visible = false;
+    models[def.id].scale.setScalar(0.85);
+    camera.add(models[def.id]);
+  }
+  const flash = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.3, 0.3),
+    new THREE.MeshBasicMaterial({ color: PALETTE.lava, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
+  flash.visible = false;
+  camera.add(flash);
+  const flashLight = new THREE.PointLight(PALETTE.lava, 0, 6);
+  camera.add(flashLight);
+
+  const ammo = {};
+  for (const def of Object.values(WEAPONS)) ammo[def.id] = { mag: def.mag, reserve: def.reserve };
+  const loadout = {
+    owned: new Set(['sidearm']),
+    primary: null,
+    current: 'sidearm',
+    grenades: { shard: 0, flare: 0, veil: 0 },
+    armor: 0,          // 0 none, 1 vest, 2 vest+helmet
+    cooldown: 0,
+    reloadLeft: 0,
+    bloom: 0,
+    flashLeft: 0,
+    kick: 0,
+    bobPhase: 0,
+    def() { return WEAPONS[this.current]; },
+    ammoState() { return ammo[this.current]; },
+    grenadeCount() { return this.grenades.shard + this.grenades.flare + this.grenades.veil; },
+  };
+
+  function showCurrent() {
+    for (const id of Object.keys(models)) models[id].visible = id === loadout.current;
+    const def = loadout.def();
+    flash.position.set(0.26, -0.21, def.id === 'longbow' ? -1.28 : def.id === 'sidearm' ? -0.42 : -0.95);
+    flashLight.position.copy(flash.position);
+  }
+  showCurrent();
+
+  loadout.switchTo = (id) => {
+    if (!loadout.owned.has(id) || loadout.current === id) return;
+    loadout.current = id;
+    loadout.reloadLeft = 0;
+    loadout.cooldown = Math.max(loadout.cooldown, 0.28);
+    showCurrent();
+  };
+  loadout.cycle = () => {
+    if (loadout.primary && loadout.current === 'sidearm') loadout.switchTo(loadout.primary);
+    else if (loadout.primary) loadout.switchTo('sidearm');
+  };
+  loadout.ready = () => loadout.cooldown <= 0 && loadout.reloadLeft <= 0 && loadout.ammoState().mag > 0;
+  loadout.tryFire = () => {
+    const state = loadout.ammoState();
+    if (loadout.reloadLeft > 0 || loadout.cooldown > 0) return false;
+    if (state.mag <= 0) { audio.dryFire(); loadout.cooldown = 0.3; return false; }
+    state.mag -= 1;
+    const def = loadout.def();
+    loadout.cooldown = 60 / def.rpm;
+    loadout.bloom = Math.min(0.03, loadout.bloom + 0.006);
+    loadout.flashLeft = 0.055;
+    loadout.kick = Math.min(0.09, loadout.kick + def.kick * 1.6);
+    return true;
+  };
+  loadout.startReload = () => {
+    const state = loadout.ammoState();
+    const def = loadout.def();
+    if (loadout.reloadLeft > 0 || state.mag >= def.mag || state.reserve <= 0) return false;
+    loadout.reloadLeft = def.reload;
+    audio.reload();
+    return true;
+  };
+  loadout.spread = (speed, crouching, airborne) => {
+    const def = loadout.def();
+    let spread = def.spreadStill + Math.min(1, speed / 5.2) * def.spreadMove + loadout.bloom;
+    if (crouching) spread *= 0.65;
+    if (airborne) spread += 0.03;
+    return spread;
+  };
+  loadout.buy = (state, id) => {
+    if (WEAPONS[id]) {
+      const def = WEAPONS[id];
+      if (loadout.owned.has(id) || state.playerMoney < def.price) return false;
+      state.playerMoney -= def.price;
+      loadout.owned.add(id);
+      if (def.slot === 'primary') loadout.primary = id;
+      ammo[id] = { mag: def.mag, reserve: def.reserve };
+      loadout.switchTo(id);
+      return true;
+    }
+    if (GRENADES[id]) {
+      const def = GRENADES[id];
+      if (loadout.grenades[id] >= def.cap || loadout.grenadeCount() >= 4 || state.playerMoney < def.price) return false;
+      state.playerMoney -= def.price;
+      loadout.grenades[id] += 1;
+      return true;
+    }
+    if (GEAR[id]) {
+      const level = id === 'vest' ? 1 : 2;
+      if (loadout.armor >= level || state.playerMoney < GEAR[id].price) return false;
+      state.playerMoney -= GEAR[id].price;
+      loadout.armor = level;
+      return true;
+    }
+    return false;
+  };
+  loadout.newRound = () => {
+    // weapons and armor persist across rounds; magazines top up from reserve only by reload
+    loadout.reloadLeft = 0;
+    loadout.cooldown = 0;
+    loadout.bloom = 0;
+    if (loadout.primary) loadout.current = loadout.primary;
+    showCurrent();
+  };
+  loadout.step = (dt, speed, firing) => {
+    loadout.cooldown = Math.max(0, loadout.cooldown - dt);
+    loadout.bloom = Math.max(0, loadout.bloom - dt * 0.028);
+    loadout.flashLeft = Math.max(0, loadout.flashLeft - dt);
+    loadout.kick += (0 - loadout.kick) * Math.min(1, dt * 13);
+    if (loadout.reloadLeft > 0) {
+      loadout.reloadLeft = Math.max(0, loadout.reloadLeft - dt);
+      if (loadout.reloadLeft === 0) {
+        const state = loadout.ammoState();
+        const def = loadout.def();
+        const take = Math.min(def.mag - state.mag, state.reserve);
+        state.mag += take;
+        state.reserve -= take;
+      }
+    }
+    loadout.bobPhase += dt * (2 + speed * 1.6) * (speed > 0.3 ? 1 : 0);
+    const model = models[loadout.current];
+    const bobY = Math.sin(loadout.bobPhase * 2) * 0.008 * Math.min(1, speed / 3);
+    const bobX = Math.cos(loadout.bobPhase) * 0.006 * Math.min(1, speed / 3);
+    const reloadDip = loadout.reloadLeft > 0 ? -0.16 * Math.sin(Math.min(1, (loadout.def().reload - loadout.reloadLeft) / loadout.def().reload) * Math.PI) : 0;
+    model.position.set(0.26 + bobX, -0.24 + bobY + reloadDip, -0.5 + loadout.kick);
+    model.rotation.x = loadout.kick * 2.4 + (loadout.reloadLeft > 0 ? 0.5 : 0);
+    model.rotation.z = loadout.reloadLeft > 0 ? 0.3 : 0;
+    flash.visible = loadout.flashLeft > 0;
+    if (flash.visible) flash.rotation.z = Math.random() * Math.PI;
+    flashLight.intensity = loadout.flashLeft > 0 ? 14 : 0;
+  };
+  loadout.muzzle = (out) => flash.getWorldPosition(out);
+  return loadout;
+}
