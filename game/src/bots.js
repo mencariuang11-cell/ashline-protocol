@@ -3,6 +3,11 @@
 // push lanes when attacking, react to what they can see (vision cone + line of sight +
 // smoke) and hear (gunfire noise events), stop to fire in bursts like the accuracy model
 // rewards, and the carrier plants the Spike while a Warden defuses it.
+// The graph has 27 hand-laid nodes over the three lanes with BFS pathfinding. Roles are
+// dealt per round: Breakers push in rush / cover / Spike-carrier roles; Wardens hold
+// site angles, rotate on contact and defuse. Perception is a 130-degree cone out to
+// 58 m, discounted by target speed and crouch, with a reaction delay of 0.24 s and up
+// scaled by skill; gunfire noise (radius 22 m) pulls nearby bots to investigate.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 import { slideMove, segmentBlocked } from './collision.js';

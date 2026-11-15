@@ -1,6 +1,10 @@
 // The round director: buy phase, live round, the Spike plant and defuse, win checks,
 // economy and match flow. It owns the combat instance and the bot stepping, and it is
 // the only place phases change, so the HUD and the bots always agree on the game.
+// Numbers: 12 s buy phase, 105 s rounds, 3.2 s plant channel, 35 s Spike fuse, 5 s
+// defuse; first to 7 rounds wins, 13 at most. Economy: $800 start, $16,000 cap, kill
+// +$300, plant +$800 team / +$300 planter, round win +$3,250, round loss +$1,900 rising
+// $250 per consecutive loss to +$2,650. Loadouts persist between rounds.
 import * as THREE from 'three';
 import { PHASE, TEAM, MATCH, award } from './state.js';
 import { SITE, SPAWNS } from './map.js';
@@ -50,10 +54,17 @@ export function createRounds({ scene, map, state, player, loadout, squad, effect
       state.noises.push({ pos: pos.clone(), at: state.time, team, radius });
       if (state.noises.length > 24) state.noises.shift();
     },
-    onPlayerHit() {
+    onPlayerHit(dmg, attacker) {
       hud.hurt();
       audio.hurt();
       effects.shake(0.14);
+      // point the HUD's damage arc at whoever landed the hit
+      if (attacker && attacker.position && !attacker.isPlayer) {
+        const f = getPlayerDir();
+        const ax = attacker.position.x - player.body.position.x;
+        const az = attacker.position.z - player.body.position.z;
+        hud.hurtFrom(Math.atan2(f.x * az - f.z * ax, f.x * ax + f.z * az));
+      }
     },
     onKill(victim, attacker, head) {
       const killerName = attacker ? (attacker.isPlayer ? 'YOU' : attacker.name) : '—';
@@ -108,7 +119,7 @@ export function createRounds({ scene, map, state, player, loadout, squad, effect
       state.stats.plants += 1;
       award(state, 300);
     }
-    hud.banner('SPIKE PLANTED', actor.isPlayer ? 'Defend the Crucible' : `${actor.name} planted — defend it`, 2.4);
+    hud.banner('SPIKE PLANTED', actor.isPlayer ? 'Defend the Crucible' : `${actor.name} planted — defend it`, 2.4, 'win');
     plantingBot = null;
     plantProgress = 0;
     playerPlantProgress = 0;
@@ -134,7 +145,8 @@ export function createRounds({ scene, map, state, player, loadout, squad, effect
       audio.roundLose();
     }
     hud.banner(team === TEAM.BREAKERS ? 'ROUND WON' : 'ROUND LOST',
-      `${reason} · Breakers ${state.score.breakers} — ${state.score.wardens}`, 3.4);
+      `${reason} · Breakers ${state.score.breakers} — ${state.score.wardens}`, 3.4,
+      team === TEAM.BREAKERS ? 'win' : 'lose');
   }
 
   function resetRound() {
@@ -156,7 +168,7 @@ export function createRounds({ scene, map, state, player, loadout, squad, effect
     player.reset(new THREE.Vector3(0, 0, 27), 0);
     squad.reset(SPAWNS, null);
     if (uiActive) hud.showBuy(true);
-    hud.banner(`ROUND ${state.round}`, 'Buy phase — press B for the shop', 2.2);
+    hud.banner(`ROUND ${state.round}`, 'Breakers attack — plant the Spike at the Crucible', 2.4, 'intro');
   }
 
   const botCtx = {
@@ -294,7 +306,7 @@ export function createRounds({ scene, map, state, player, loadout, squad, effect
           state.phaseTime = MATCH.roundSeconds;
           hud.showBuy(false);
           audio.countGo();
-          hud.banner(`ROUND ${state.round}`, state.spike.carrier === 'player' ? 'Plant the Spike at the Crucible' : 'Escort the Spike', 2.2);
+          hud.banner(`ROUND ${state.round} — LIVE`, state.spike.carrier === 'player' ? 'Plant the Spike at the Crucible' : 'Escort the Spike', 2.0, 'intro');
         }
         return;
       }

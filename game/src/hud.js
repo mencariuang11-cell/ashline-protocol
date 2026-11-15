@@ -18,12 +18,14 @@ export function createHud({ state, loadout, colliders, onBuy, onPlay }) {
     menu: $('menu'), menuTitle: $('menu-title'), menuCopy: $('menu-copy'), play: $('play'),
     vignette: $('vignette'), flashbang: $('flashbang'), scope: $('scope'),
     grenades: $('grenades'), channel: $('channel'), channelFill: $('channel-fill'), channelLabel: $('channel-label'),
+    channelRing: document.querySelector('#channel-ring .ring-fg'), dmgdir: $('dmgdir'),
     crosshair: $('crosshair'), hitmarker: $('hitmarker'), spectate: $('spectate'),
     minimap: $('minimap').getContext('2d'),
   };
   let bannerUntil = 0;
   let hitmarkerUntil = 0;
   let hurtUntil = 0;
+  let dmgUntil = 0;
   let flashLevel = 0;
   let buyVisible = false;
 
@@ -125,10 +127,14 @@ export function createHud({ state, loadout, colliders, onBuy, onPlay }) {
     },
     hideMenu() { els.menu.hidden = true; },
     menuVisible() { return !els.menu.hidden; },
-    banner(title, sub, seconds = 2.6) {
+    banner(title, sub, seconds = 2.6, kind = 'info') {
       els.bannerTitle.textContent = title;
       els.bannerSub.textContent = sub || '';
+      els.banner.dataset.kind = kind;
       els.banner.hidden = false;
+      els.banner.classList.remove('show');
+      void els.banner.offsetWidth;   // restart the entrance animation
+      els.banner.classList.add('show');
       bannerUntil = performance.now() + seconds * 1000;
     },
     feed(text) {
@@ -143,15 +149,26 @@ export function createHud({ state, loadout, colliders, onBuy, onPlay }) {
     hitmarker(kill) {
       els.hitmarker.classList.toggle('kill', kill);
       els.hitmarker.style.opacity = '1';
+      els.hitmarker.style.transform =
+        `translate(-50%, -50%) rotate(45deg) scale(${kill ? 1.35 : 1.15})`;
       hitmarkerUntil = performance.now() + (kill ? 260 : 120);
     },
     hurt() { hurtUntil = performance.now() + 320; },
+    // Damage direction: an arc around the crosshair rotated to the attacker's bearing
+    // relative to where the player faces (0 = ahead, positive = to the right).
+    hurtFrom(relativeRad) {
+      els.dmgdir.style.transform =
+        `translate(-50%, -50%) rotate(${(relativeRad * 180 / Math.PI).toFixed(1)}deg)`;
+      els.dmgdir.style.opacity = '1';
+      dmgUntil = performance.now() + 800;
+    },
     flash(strength) { flashLevel = Math.min(1, Math.max(flashLevel, strength)); },
     setChannel(label, fraction) {
       if (fraction === null) { els.channel.hidden = true; return; }
       els.channel.hidden = false;
       els.channelLabel.textContent = label;
       els.channelFill.style.width = `${Math.round(fraction * 100)}%`;
+      els.channelRing.style.strokeDashoffset = (226.2 * (1 - fraction)).toFixed(1);
     },
     setScope(on) { els.scope.hidden = !on; },
     update(playerBody, combatants) {
@@ -182,7 +199,11 @@ export function createHud({ state, loadout, colliders, onBuy, onPlay }) {
         `<span class="${state.grenadeSel === 'veil' ? 'sel' : ''}">Veil x${loadout.grenades.veil}</span>`;
       els.spectate.hidden = playerBody.alive;
       if (now > bannerUntil) els.banner.hidden = true;
-      if (now > hitmarkerUntil) els.hitmarker.style.opacity = '0';
+      if (now > hitmarkerUntil) {
+        els.hitmarker.style.opacity = '0';
+        els.hitmarker.style.transform = 'translate(-50%, -50%) rotate(45deg) scale(1)';
+      }
+      if (now > dmgUntil) els.dmgdir.style.opacity = '0';
       els.vignette.style.opacity = now < hurtUntil ? '1' : (playerBody.hp < 35 && playerBody.alive ? '0.45' : '0');
       flashLevel = Math.max(0, flashLevel - 0.008);
       els.flashbang.style.opacity = String(flashLevel);

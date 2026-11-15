@@ -2,7 +2,10 @@
 // (the Canal west, the Press Hall mid, the Foundry east) converge on the Crucible, a
 // reactor pad in the north yard where the Spike is planted. Every solid is an AABB in
 // `colliders` (bullets and bodies test the same list) with a mesh built beside it, and
-// the waypoint graph the bots walk is laid over the lanes by hand.
+// the waypoint graph the bots walk is laid over the lanes by hand. The furnace splits
+// mid, the slab stack and pipe runs are the Canal's cover, the lava channels are
+// glowing reference lines for callouts, and the Crucible ring (radius 6.5) is the
+// plant zone. Beyond the walls, dead foundry blocks and chimneys stand in the haze.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
@@ -171,7 +174,7 @@ export function buildMap(scene) {
   scene.add(furnace);
   colliders.push(box(-3.2, -2.4, 3.2, 2.4, 4.4));
   const lavaMat = new THREE.MeshStandardMaterial({
-    color: PALETTE.lava, emissive: PALETTE.lava, emissiveIntensity: 1.7, roughness: 0.4 });
+    color: PALETTE.lava, emissive: PALETTE.lava, emissiveIntensity: 2.3, roughness: 0.4 });
   for (const side of [-1, 1]) {
     const slit = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.34, 0.1), lavaMat);
     slit.position.set(0, 1.0, side * 2.46);
@@ -201,9 +204,29 @@ export function buildMap(scene) {
   crate(-20, 6); crate(20, -12); crate(-6, 16.5); crate(24, 14, 1.15, 2); crate(-24, -8);
   barrels(-6, 10.5); barrels(6, 10.5); barrels(20, 12); barrels(-18, -19); barrels(8, -6);
 
+  // the plant beyond the walls: dead foundry blocks and chimneys standing in the haze,
+  // pure silhouette (no colliders) so stills get depth past the perimeter
+  const matSkyline = new THREE.MeshStandardMaterial({ color: 0x252d37, roughness: 1 });
+  for (const [x, z, w, h] of [[-58, -28, 15, 20], [-38, -58, 19, 30], [2, -64, 24, 25], [42, -56, 17, 33],
+      [61, -14, 15, 19], [63, 26, 19, 27], [38, 59, 21, 23], [-6, 66, 25, 29], [-46, 56, 17, 21], [-63, 8, 15, 25]]) {
+    const block = new THREE.Mesh(new THREE.BoxGeometry(w, h, w * 0.7), matSkyline);
+    block.position.set(x, h / 2, z);
+    scene.add(block);
+  }
+  const beaconMat = new THREE.MeshStandardMaterial({
+    color: 0xff2a1a, emissive: 0xff2a1a, emissiveIntensity: 2.4 });
+  for (const [x, z, h] of [[-52, -42, 34], [56, -47, 38]]) {
+    const stack = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.9, h, 10), matSkyline);
+    stack.position.set(x, h / 2, z);
+    scene.add(stack);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 8), beaconMat);
+    beacon.position.set(x, h + 0.5, z);
+    scene.add(beacon);
+  }
+
   // lamp posts on the lanes
   const lampMat = new THREE.MeshStandardMaterial({
-    color: PALETTE.lampWarm, emissive: PALETTE.lampWarm, emissiveIntensity: 2.2 });
+    color: PALETTE.lampWarm, emissive: PALETTE.lampWarm, emissiveIntensity: 2.6 });
   for (const [x, z] of [[-11, 18], [11, 16], [-20, -6], [20, 6], [0, -11]]) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 5.4, 8), matWallDark);
     pole.position.set(x, 2.7, z);
@@ -213,8 +236,8 @@ export function buildMap(scene) {
     scene.add(head);
   }
 
-  // lights: low warm sun, sky fill, and three practicals
-  const sun = new THREE.DirectionalLight(0xffc98a, 2.85);
+  // lights: low warm sun, a cool bounce fill off the east sky, sky fill, three practicals
+  const sun = new THREE.DirectionalLight(0xffc98a, 3.15);
   sun.position.set(-38, 30, 18);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -223,7 +246,10 @@ export function buildMap(scene) {
   sun.shadow.camera.far = 120;
   sun.shadow.bias = -0.0006;
   scene.add(sun);
-  scene.add(new THREE.HemisphereLight(0x8fb4d8, 0x3a2f26, 1.0));
+  const fill = new THREE.DirectionalLight(0x7d94b8, 0.55);
+  fill.position.set(30, 22, -26);
+  scene.add(fill);
+  scene.add(new THREE.HemisphereLight(0x8fb4d8, 0x3a2f26, 1.05));
   const furnaceLight = new THREE.PointLight(PALETTE.lava, 60, 22, 1.8);
   furnaceLight.position.set(0, 2.4, 4.2);
   scene.add(furnaceLight);

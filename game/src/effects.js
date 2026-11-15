@@ -1,11 +1,30 @@
 // Transient visuals and the throwable world: pooled tracers and impact bursts (nothing
-// is allocated per shot), grenades with real arcs and bounces, Veil smoke that genuinely
-// blocks sightlines, explosion flashes, and the Spike prop with its blinking armed light.
+// is allocated per shot), pooled glow sprites for muzzle flashes and impact flashes,
+// grenades with real arcs and bounces, Veil smoke that genuinely blocks sightlines,
+// explosion flashes, and the Spike prop with its blinking armed light.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
 const TRACER_COUNT = 28;
 const PARTICLE_COUNT = 420;
+const FLASH_COUNT = 12;
+
+// A soft radial glow, drawn once and reused by every flash sprite.
+function glowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const g = canvas.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 export function createEffects(scene, colliders) {
   // tracers: one Line per shot, recycled
@@ -20,6 +39,23 @@ export function createEffects(scene, colliders) {
     tracers.push({ line, left: 0 });
   }
   let tracerCursor = 0;
+
+  // flash sprites: one pooled glow billboard per muzzle flash / impact flash, plus a
+  // single shared point light that jumps to the newest muzzle so shots light the world
+  const glowTex = glowTexture();
+  const flashes = [];
+  for (let i = 0; i < FLASH_COUNT; i += 1) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    sprite.visible = false;
+    sprite.frustumCulled = false;
+    scene.add(sprite);
+    flashes.push({ sprite, left: 0, max: 1, scale: 1 });
+  }
+  let flashCursor = 0;
+  const muzzleLight = new THREE.PointLight(PALETTE.lava, 0, 10, 1.8);
+  scene.add(muzzleLight);
+  let muzzleLightLeft = 0;
 
   // particles: one Points cloud with per-particle velocity and life kept in JS arrays
   const pGeo = new THREE.BufferGeometry();
@@ -97,7 +133,26 @@ export function createEffects(scene, colliders) {
       attr.needsUpdate = true;
       slot.line.material.color.setHex(color);
       slot.line.visible = true;
-      slot.left = 0.07;
+      slot.left = 0.09;
+    },
+    // A brief additive glow billboard: muzzle flashes, impact flashes, explosion cores.
+    flashAt(position, colorHex, scale = 0.8, life = 0.09) {
+      const slot = flashes[flashCursor];
+      flashCursor = (flashCursor + 1) % FLASH_COUNT;
+      slot.sprite.position.copy(position);
+      slot.sprite.material.color.setHex(colorHex);
+      slot.sprite.material.rotation = Math.random() * Math.PI;
+      slot.scale = scale;
+      slot.left = life;
+      slot.max = life;
+      slot.sprite.visible = true;
+    },
+    // A gun firing in the world: glow at the muzzle plus a breath of real light.
+    muzzle(position, colorHex = PALETTE.lava) {
+      effects.flashAt(position, colorHex, 0.95, 0.07);
+      muzzleLight.position.copy(position);
+      muzzleLight.color.setHex(colorHex);
+      muzzleLightLeft = 0.055;
     },
     burst(position, colorHex, count = 8, speed = 2.4, life = 0.45, gravity = 5) {
       colorTmp.setHex(colorHex);
@@ -121,6 +176,8 @@ export function createEffects(scene, colliders) {
       boomLeft = 0.28;
       ring.position.copy(position).y = 0.4;
       ring.visible = true;
+      effects.flashAt(boomLight.position, 0xfff0d0, 2.4, 0.13);
+      effects.flashAt(boomLight.position, PALETTE.lava, 4.2, 0.24);
       effects.burst(position, PALETTE.lava, 42, 7, 0.7, 7);
       effects.burst(position, 0x55483a, 22, 3.5, 1.1, 3);
       shakeAmount = Math.min(0.5, shakeAmount + 0.3);
@@ -179,9 +236,22 @@ export function createEffects(scene, colliders) {
       for (const slot of tracers) {
         if (!slot.line.visible) continue;
         slot.left -= dt;
-        slot.line.material.opacity = Math.max(0, slot.left / 0.07) * 0.85;
+        slot.line.material.opacity = Math.max(0, slot.left / 0.09);
         if (slot.left <= 0) slot.line.visible = false;
       }
+      for (const slot of flashes) {
+        if (!slot.sprite.visible) continue;
+        slot.left -= dt;
+        if (slot.left <= 0) { slot.sprite.visible = false; continue; }
+        const t = slot.left / slot.max;
+        slot.sprite.material.opacity = t;
+        const s = slot.scale * (1.25 - 0.55 * t);
+        slot.sprite.scale.set(s, s, 1);
+      }
+      if (muzzleLightLeft > 0) {
+        muzzleLightLeft -= dt;
+        muzzleLight.intensity = Math.max(0, muzzleLightLeft / 0.055) * 30;
+      } else muzzleLight.intensity = 0;
       for (let i = 0; i < PARTICLE_COUNT; i += 1) {
         const p = particles[i];
         if (p.life <= 0) continue;

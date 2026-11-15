@@ -3,6 +3,9 @@
 // material in the game is built from these values so the scene reads at a glance.
 export const PALETTE = {
   sky: 0x1b2432,        // dusk blue overhead
+  skyZenith: 0x0c141f,  // top of the sky dome
+  skyHorizon: 0xc96a34, // burnt-orange band where the sun went down
+  sunTint: 0xffb45e,    // afterglow tint around the set sun
   fog: 0x232d3a,
   ground: 0x3a4149,     // worn concrete
   groundDark: 0x2e343c,

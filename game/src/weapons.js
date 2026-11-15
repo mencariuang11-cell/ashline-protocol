@@ -2,6 +2,11 @@
 // always carry and one primary slot. Accuracy is the heart of it: spread is smallest
 // standing still and crouched, grows while moving or airborne, and blooms with each
 // shot before it settles — so the game rewards stopping, aiming and firing in bursts.
+// Roster: P9 Sidearm (free, 26 dmg, semi-auto all-rounder) · Mule Scattergun ($1,100,
+// 8 pellets x 9 dmg, owns close range) · Raptor-9 SMG ($1,400, 18 dmg, 750 rpm,
+// run-and-gun) · VK-7 Carbine ($2,700, 33 dmg, 600 rpm, the accurate rifle) · Longbow
+// DMR ($4,200, 88 dmg, scoped). Armour: Kevlar Vest $650, Vest + Helmet $1,000.
+// Grenades: Shard frag $300, Flare blind $200, Veil smoke $300.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
@@ -23,6 +28,32 @@ export const GEAR = {
   // the Spike itself is carried by the player from spawn; no purchase needed
 };
 export const SHOP_ORDER = ['scatter', 'smg', 'carbine', 'longbow', 'vest', 'vesthelm', 'shard', 'flare', 'veil'];
+
+// A muzzle-flash star: bright core with four tapering spikes, drawn once on a canvas
+// and mapped onto the viewmodel's flash plane so a shot reads as a starburst, not a blob.
+function flashTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const g = canvas.getContext('2d');
+  const core = g.createRadialGradient(64, 64, 2, 64, 64, 30);
+  core.addColorStop(0, 'rgba(255,246,220,1)');
+  core.addColorStop(0.5, 'rgba(255,180,90,0.75)');
+  core.addColorStop(1, 'rgba(255,122,38,0)');
+  g.fillStyle = core;
+  g.fillRect(0, 0, 128, 128);
+  g.globalCompositeOperation = 'lighter';
+  for (const [w, h] of [[9, 126], [126, 9], [6, 84], [84, 6]]) {
+    const spike = g.createRadialGradient(64, 64, 2, 64, 64, 62);
+    spike.addColorStop(0, 'rgba(255,220,160,0.9)');
+    spike.addColorStop(1, 'rgba(255,140,50,0)');
+    g.fillStyle = spike;
+    g.fillRect(64 - w / 2, 64 - h / 2, w, h);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 function buildViewModel(def, mats) {
   const group = new THREE.Group();
@@ -78,8 +109,8 @@ export function createLoadout(camera, audio) {
     camera.add(models[def.id]);
   }
   const flash = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.3, 0.3),
-    new THREE.MeshBasicMaterial({ color: PALETTE.lava, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
+    new THREE.PlaneGeometry(0.34, 0.34),
+    new THREE.MeshBasicMaterial({ map: flashTexture(), color: 0xffd9a8, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
   flash.visible = false;
   camera.add(flash);
   const flashLight = new THREE.PointLight(PALETTE.lava, 0, 6);
@@ -133,6 +164,7 @@ export function createLoadout(camera, audio) {
     loadout.cooldown = 60 / def.rpm;
     loadout.bloom = Math.min(0.03, loadout.bloom + 0.006);
     loadout.flashLeft = 0.055;
+    flash.scale.setScalar(0.8 + Math.random() * 0.55);
     loadout.kick = Math.min(0.09, loadout.kick + def.kick * 1.6);
     return true;
   };

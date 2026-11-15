@@ -4,6 +4,46 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ASHLINE PROTOCOL — a three.js tactical FPS</title>
+<!--
+  ASHLINE PROTOCOL — a complete round-based tactical FPS in three.js, in the spirit of
+  a bomb-defusal shooter: the Breakers attack, the Wardens defend, and one Spike decides
+  every round. One player plus four Breaker bots against five Warden bots on Foundry
+  Nine, a dusk smelting plant with three lanes — the Canal (west), the Press Hall (mid)
+  and the Foundry (east) — converging on the Crucible, a reactor pad in the north yard.
+
+  ROUND STRUCTURE: 12-second buy phase, then a 105-second live round. Planting the
+  Spike takes 3.2 s of held channel inside the Crucible ring and starts a 35-second
+  fuse; a Warden defuse takes 5 s. A round is won by detonation, defuse, elimination
+  or the clock. First to 7 rounds wins the match, 13 rounds at most.
+
+  ECONOMY (full simulation, not a skin): $800 start, $16,000 cap. Kill +$300. Spike
+  plant +$800 to the team and +$300 to the planter. Round win +$3,250. Round loss
+  +$1,900, rising $250 per consecutive loss to +$2,650. Weapons, armour and grenades
+  persist between rounds; magazines do not refill for free.
+
+  WEAPONS (hitscan, head/body hit volumes, distance falloff, armour priced in):
+  P9 Sidearm (free, semi-auto all-rounder), Mule Scattergun ($1,100, 8 pellets, owns
+  close range), Raptor-9 SMG ($1,400, 750 rpm run-and-gun), VK-7 Carbine ($2,700, the
+  accurate rifle), Longbow DMR ($4,200, 88 damage, 26-power scope). Accuracy is a
+  model, not a crosshair decoration: spread is priced from movement, crouch, airborne
+  state and per-shot bloom, so stopping and bursting wins fights. Armour: Kevlar Vest
+  ($650) and Vest + Helmet ($1,000) cut body damage to 55% and head damage to 50%.
+
+  GRENADES: Shard ($300, frag — radial blast, halved through cover), Flare ($200,
+  blinds by facing and line of sight, bots included), Veil ($300, a smoke wall that
+  genuinely breaks sightlines — the bots' vision tests the same smoke the player sees).
+
+  BOT AI: nine bots walk a hand-laid 27-node waypoint graph over the three lanes (BFS
+  pathfinding), hold defensive angles, push lanes in rush/cover/carrier roles, plant
+  and defuse the Spike, and fight in bursts with priced aim error. Perception is a
+  130-degree vision cone plus line-of-sight raycasts plus smoke occlusion, a reaction
+  delay scaled by skill, and hearing: gunfire noise events pull bots to investigate.
+
+  TECH: fixed 60 Hz simulation decoupled from render rate, WebAudio-synthesised gunfire
+  and round sounds (no audio assets), a live minimap and kill feed, pooled tracers,
+  particles and glow sprites (nothing allocated per shot), and deterministic
+  ?shot=<name>&seed=<n> staging used to render the entry's screenshots.
+-->
 <style>
   :root {
     --canvas: #141a21;
@@ -31,13 +71,20 @@
   #crosshair i:nth-child(4) { width: 8px; height: 2px; transform: translate(var(--gap), -50%); }
   #crosshair b { position: absolute; left: 50%; top: 50%; width: 2px; height: 2px; background: var(--ink); transform: translate(-50%, -50%); }
 
-  #hitmarker { position: fixed; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%) rotate(45deg); opacity: 0; }
+  #hitmarker { position: fixed; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%) rotate(45deg); opacity: 0;
+    transition: transform .07s ease-out, opacity .12s; }
   #hitmarker i { position: absolute; background: var(--gold); }
   #hitmarker.kill i { background: var(--danger); }
-  #hitmarker i:nth-child(1) { left: 12px; top: 0; width: 2px; height: 8px; }
-  #hitmarker i:nth-child(2) { left: 12px; bottom: 0; width: 2px; height: 8px; }
-  #hitmarker i:nth-child(3) { top: 12px; left: 0; height: 2px; width: 8px; }
-  #hitmarker i:nth-child(4) { top: 12px; right: 0; height: 2px; width: 8px; }
+  #hitmarker i:nth-child(1) { left: 14px; top: 0; width: 2px; height: 9px; }
+  #hitmarker i:nth-child(2) { left: 14px; bottom: 0; width: 2px; height: 9px; }
+  #hitmarker i:nth-child(3) { top: 14px; left: 0; height: 2px; width: 9px; }
+  #hitmarker i:nth-child(4) { top: 14px; right: 0; height: 2px; width: 9px; }
+
+  #dmgdir { position: fixed; left: 50%; top: 50%; width: 128px; height: 128px; transform: translate(-50%, -50%);
+    opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #dmgdir svg { display: block; width: 100%; height: 100%; }
+  #dmgdir path { fill: none; stroke: var(--danger); stroke-width: 7; stroke-linecap: round;
+    filter: drop-shadow(0 0 5px rgba(255,60,30,.8)); }
 
   #minimap-wrap { position: fixed; left: 18px; top: 16px; border: 1px solid var(--hairline); border-radius: 6px; overflow: hidden; }
   #minimap { display: block; width: 184px; height: 184px; }
@@ -56,8 +103,14 @@
 
   #banner { position: fixed; top: 24%; left: 0; right: 0; text-align: center; z-index: 2; }
   #banner[hidden] { display: none; }
+  #banner.show { animation: banner-in .5s cubic-bezier(.2, .9, .25, 1.2); }
+  @keyframes banner-in { from { opacity: 0; transform: translateY(14px) scale(.94); } to { opacity: 1; transform: none; } }
   #banner-title { font-size: 44px; font-weight: 700; letter-spacing: .12em; text-shadow: 0 3px 14px rgba(0,0,0,.75); }
   #banner-sub { margin-top: 6px; font-size: 16px; color: var(--gold); text-shadow: 0 2px 8px rgba(0,0,0,.8); }
+  #banner[data-kind="intro"] #banner-title { font-size: 52px; letter-spacing: .3em; }
+  #banner[data-kind="intro"] #banner-sub { letter-spacing: .18em; text-transform: uppercase; font-size: 14px; }
+  #banner[data-kind="win"] #banner-title { color: var(--ember); }
+  #banner[data-kind="lose"] #banner-title { color: var(--danger); }
 
   #bottom-left { position: fixed; left: 22px; bottom: 20px; }
   #health-row { display: flex; align-items: baseline; gap: 10px; font-family: var(--font-readout); }
@@ -75,10 +128,16 @@
   #ammo-mag { font-size: 46px; line-height: 1; }
   #ammo-reserve { font-size: 16px; color: var(--muted); }
 
-  #channel { position: fixed; left: 50%; bottom: 21%; transform: translateX(-50%); width: 300px; text-align: center; }
+  #channel { position: fixed; left: 50%; bottom: 19%; transform: translateX(-50%); width: 300px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; }
   #channel[hidden] { display: none; }
-  #channel-label { font-size: 13px; letter-spacing: .22em; color: var(--gold); text-shadow: 0 1px 4px rgba(0,0,0,.8); }
-  #channel-bar { margin-top: 7px; height: 6px; background: rgba(255,255,255,.16); border-radius: 3px; overflow: hidden; }
+  #channel-ring { width: 92px; height: 92px; transform: rotate(-90deg); }
+  #channel-ring circle { fill: none; stroke-width: 6; }
+  #channel-ring .ring-bg { stroke: rgba(255,255,255,.16); }
+  #channel-ring .ring-fg { stroke: var(--gold); stroke-linecap: round; stroke-dasharray: 226.2; stroke-dashoffset: 226.2;
+    filter: drop-shadow(0 0 6px rgba(255,180,94,.75)); }
+  #channel-label { margin-top: 8px; font-size: 13px; letter-spacing: .22em; color: var(--gold); text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+  #channel-bar { margin-top: 7px; width: 300px; height: 6px; background: rgba(255,255,255,.16); border-radius: 3px; overflow: hidden; }
   #channel-fill { height: 100%; width: 0; background: var(--gold); }
 
   #spectate { position: fixed; left: 50%; bottom: 12%; transform: translateX(-50%); font-family: var(--font-readout); font-size: 14px; color: var(--danger); letter-spacing: .14em; }
@@ -131,6 +190,7 @@
 <div id="hud" aria-hidden="true">
   <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
   <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div id="dmgdir"><svg viewBox="0 0 120 120"><path d="M 31 41 A 35 35 0 0 1 89 41"/></svg></div>
   <div id="minimap-wrap"><canvas id="minimap" width="184" height="184"></canvas></div>
   <div id="objective"></div>
   <div id="topbar">
@@ -151,7 +211,10 @@
     <div id="ammo"><span id="ammo-mag">12</span><span id="ammo-reserve">/ 48</span></div>
     <div id="weapon-name">P9 SIDEARM</div>
   </div>
-  <div id="channel" hidden><div id="channel-label"></div><div id="channel-bar"><div id="channel-fill"></div></div></div>
+  <div id="channel" hidden>
+    <svg id="channel-ring" viewBox="0 0 84 84"><circle class="ring-bg" cx="42" cy="42" r="36"/><circle class="ring-fg" cx="42" cy="42" r="36"/></svg>
+    <div id="channel-label"></div><div id="channel-bar"><div id="channel-fill"></div></div>
+  </div>
   <div id="spectate" hidden>ELIMINATED — SPECTATING</div>
 </div>
 

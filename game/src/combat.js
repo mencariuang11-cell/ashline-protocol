@@ -2,7 +2,9 @@
 // against each combatant's two hit volumes — a head sphere (big damage multiplier) and
 // a body capsule — and the nearest hit wins, so cover always protects. Damage falls
 // off with distance and is reduced by armor. Bots fire through the same path with an
-// aim error priced from their skill, the range and the target's speed.
+// aim error priced from their skill, the range and the target's speed. Armour cuts
+// body damage to 55% and head damage to 50%; every hit spawns pooled impact sparks
+// plus a glow flash — bloodless, and readable at a glance in a screenshot.
 import * as THREE from 'three';
 import { rayHitWorld } from './collision.js';
 import { PALETTE } from './palette.js';
@@ -97,9 +99,12 @@ export function createCombat({ colliders, effects, audio, state, onKill, onPlaye
     if (victim) {
       const dmg = def.damage * (head ? def.headMult : 1) * falloff(def, bestT);
       killed = applyDamage(victim, dmg, shooter, head);
-      effects.burst(hitPoint, head ? 0xffb45e : 0xd8cfc0, head ? 10 : 6, 1.8, 0.3, 6);
+      // bloodless hit feedback: a bright spark flash and a puff of pale impact dust
+      effects.flashAt(hitPoint, head ? 0xffcf7a : 0xffe9c9, head ? 0.85 : 0.55, 0.08);
+      effects.burst(hitPoint, head ? 0xffb45e : 0xd8cfc0, head ? 14 : 9, 1.9, 0.32, 6);
     } else if (bestT !== Infinity) {
-      effects.burst(hitPoint, 0x9aa3ad, 4, 1.4, 0.3, 6);
+      effects.flashAt(hitPoint, 0xd8e2ec, 0.4, 0.06);
+      effects.burst(hitPoint, 0x9aa3ad, 7, 1.5, 0.3, 6);
     }
     return { victim, head, killed, point: hitPoint, dist: bestT };
   }
@@ -136,6 +141,7 @@ export function createCombat({ colliders, effects, audio, state, onKill, onPlaye
       aimTmp.z += (Math.random() + Math.random() - 1) * sigma * dist * 0.7;
       dirTmp.subVectors(aimTmp, muzzle).normalize();
       const result = fire(bot, muzzle, dirTmp, def);
+      effects.muzzle(muzzle, bot.team === 'wardens' ? 0xbfd9ff : PALETTE.lava);
       effects.tracer(muzzle, result.point, bot.team === 'wardens' ? 0x9fd8ff : PALETTE.tracer);
       if (dist < 34) audio.enemyShot();
       onNoise(muzzle, bot.team, 24);

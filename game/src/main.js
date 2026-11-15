@@ -39,12 +39,39 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.toneMappingExposure = 1.16;
 document.getElementById('game').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(PALETTE.sky);
-scene.fog = new THREE.Fog(new THREE.Color(PALETTE.fog), 26, 78);
+scene.fog = new THREE.Fog(new THREE.Color(PALETTE.fog), 30, 100);
+
+// The sky is a gradient dome, not a flat clear colour: deep zenith, a burnt-orange
+// band at the horizon, and warm afterglow pooled around where the sun went down.
+const skyDome = new THREE.Mesh(
+  new THREE.SphereGeometry(150, 24, 12),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    uniforms: {
+      top: { value: new THREE.Color(PALETTE.skyZenith) },
+      mid: { value: new THREE.Color(PALETTE.sky) },
+      low: { value: new THREE.Color(PALETTE.skyHorizon) },
+      tint: { value: new THREE.Color(PALETTE.sunTint) },
+      sunDir: { value: new THREE.Vector3(-38, 9, 18).normalize() },
+    },
+    vertexShader: 'varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'varying vec3 vDir; uniform vec3 top; uniform vec3 mid; uniform vec3 low; uniform vec3 tint; uniform vec3 sunDir;',
+      'void main() {',
+      '  vec3 d = normalize(vDir);',
+      '  vec3 c = d.y > 0.12 ? mix(mid, top, smoothstep(0.12, 0.65, d.y))',
+      '                      : mix(low, mid, smoothstep(-0.06, 0.12, d.y));',
+      '  c += tint * pow(max(dot(d, sunDir), 0.0), 10.0) * 0.5;',
+      '  gl_FragColor = vec4(c, 1.0);',
+      '}',
+    ].join('\n'),
+  }));
+scene.add(skyDome);
 const camera = new THREE.PerspectiveCamera(74, window.innerWidth / window.innerHeight, 0.05, 160);
 scene.add(camera);
 
@@ -275,48 +302,67 @@ function stageShot(name) {
     place(bots[1], 3.6, 25, -0.3);
     hud.showBuy(true);
   } else if (name === 'site') {
-    state.phase = PHASE.PLANTED;
-    state.phaseTime = 12.4;
-    state.spike.planted = true;
-    state.spike.position = new THREE.Vector3(3.1, 0, -16.8);
-    effects.setSpikeMode('planted', state.spike.position);
-    body.position.set(7.6, 0, -11.6);
-    body.yaw = 0.62;
-    body.pitch = -0.03;
+    // The plant itself: the channel ring at two-thirds around the crosshair, the
+    // Spike on the pad in front of the player, a teammate covering the pad and
+    // Wardens pushing both Crucible lanes.
+    state.phase = PHASE.LIVE;
+    state.phaseTime = 64;
+    state.spike.carrier = 'player';
+    state.spike.planted = false;
+    effects.setSpikeMode('dropped', new THREE.Vector3(3.1, 0, -16.8));
+    body.position.set(9.5, 0, -9.5);
+    body.yaw = 0.72;
+    body.pitch = -0.05;
     body.hp = 84;
-    place(bots[4], 3.3, -15.6, 2.6);          // a Warden on the defuse
-    place(bots[0], 8.6, -19.5, -1.2);         // teammate covering the pad
+    place(bots[0], 5.5, -21.5, 2.4);          // teammate covering the pad
     place(bots[6], -6.5, -13.5, 1.9);         // Warden pushing the west lane
-    effects.burst(new THREE.Vector3(3.1, 0.6, -16.8), PALETTE.warden, 6, 1.2, 0.5, 3);
+    place(bots[4], 10.5, -24.5, -2.8);        // Warden rotating in from the east
+    hud.setChannel('PLANTING THE SPIKE', 0.62);
   } else if (name === 'duel') {
+    // Through the Longbow's scope: one Warden centred at 26 m down the Canal,
+    // caught by a bodyshot — impact flash and hitmarker inside the scope picture.
     state.phase = PHASE.LIVE;
     state.phaseTime = 41;
-    body.position.set(-20, 0, 9);
-    body.yaw = 0.06;
-    body.hp = 58;
-    place(bots[7], -19.2, -7.5, Math.PI - 0.15);
-    place(bots[2], -16.5, 12, 0.2);
-    effects.addSmoke(new THREE.Vector3(-20, 0, -1));
-    for (let i = 0; i < 26; i += 1) effects.update(FIXED_STEP);
-    const foe = bots[7];
-    foe.target = rounds.playerProxy;
-    rounds.combat.botFire(foe, rounds.playerProxy, 16);
-    body.hp = 58;
+    loadout.owned.add('longbow');
+    loadout.primary = 'longbow';
+    loadout.switchTo('longbow');
+    body.position.set(-20, 0, 10);
+    body.yaw = -0.054;
+    body.pitch = -0.015;
+    body.hp = 76;
+    place(bots[7], -18.6, -16, Math.PI - 0.2);
+    place(bots[2], -13.5, 13, 0.2);
+    camera.fov = 26;
+    camera.updateProjectionMatrix();
+    hud.setScope(true);
+    for (const child of camera.children) if (child.isGroup || child.isMesh) child.visible = false;
+    eyePos.set(body.position.x, body.position.y + body.eye, body.position.z);
+    syncCamera();
+    aimDir.copy(camDir);
+    const hit = rounds.combat.playerFire(rounds.playerProxy, eyePos, aimDir, loadout.def(), 0.0004, random);
+    if (hit) hud.hitmarker(hit.killed);
+    body.hp = 76;
   } else {
-    // cover: a mid-lane firefight over the furnace
+    // Cover: a mid-lane firefight over the furnace — the player connects on the
+    // Warden ahead while return fire lights the frame and the damage arc shows.
     state.phase = PHASE.LIVE;
     state.phaseTime = 47;
     body.position.set(-5.5, 0, 9.0);
     body.yaw = -0.08;
-    body.hp = 72;
-    place(bots[8], -4.4, -4.0, Math.PI + 0.1);
+    place(bots[8], -4.6, 0.5, Math.PI + 0.1);
     place(bots[1], -8.6, 11.5, 0.2);
     place(bots[5], 5.5, -3, Math.PI - 0.4);
     eyePos.set(body.position.x, body.position.y + body.eye, body.position.z);
     syncCamera();
     aimDir.copy(camDir);
-    rounds.combat.playerFire(rounds.playerProxy, eyePos, aimDir, loadout.def(), 0.001, random);
-    hud.hitmarker(false);
+    const hit = rounds.combat.playerFire(rounds.playerProxy, eyePos, aimDir, loadout.def(), 0.001, random);
+    if (hit) hud.hitmarker(hit.killed);
+    loadout.muzzle(shakeVec);
+    effects.muzzle(shakeVec);
+    const foe = bots[8];
+    foe.target = rounds.playerProxy;
+    rounds.combat.botFire(foe, rounds.playerProxy, 9);
+    hud.hurtFrom(0.03);
     body.hp = 72;
   }
   effects.update(0.001);   // settle tracer opacity and flashes for the frozen frame
