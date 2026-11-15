@@ -1,15 +1,12 @@
 // Bot combatants: low-poly soldiers with team colours, a walk cycle and a gun, driven by
-// a small tactical brain. Bots walk the map's waypoint graph, hold angles when defending,
-// push lanes when attacking, react to what they can see (vision cone + line of sight +
-// smoke) and hear (gunfire noise events), stop to fire in bursts like the accuracy model
-// rewards, and the carrier plants the Spike while a Warden defuses it.
-// The graph has 27 hand-laid nodes over the three lanes with BFS pathfinding. Roles are
-// dealt per round: Breakers push in rush / cover / Spike-carrier roles; Wardens hold
-// site angles, rotate on contact and defuse. Perception is a 130-degree cone out to
-// 58 m, discounted by target speed and crouch, with a reaction delay of 0.24 s and up
-// scaled by skill; gunfire noise (radius 22 m) pulls nearby bots to investigate.
+// the tactical brain specified below — a job state machine over a 27-node waypoint
+// graph (BFS), priced perception (cone + line of sight + smoke + hearing), burst fire
+// control, team callouts, and one Shard grenade per bot per round to flush targets
+// from cover. Roles are dealt per round: Breakers push in rush / cover / carrier
+// roles (the carrier plants the Spike); Wardens hold site angles, rotate on
+// contact and defuse.
 //
-// BOT STATE MACHINE (stepBot). Every bot always has a job state, and combat is an
+// BOT STATE MACHINE (stepBot). Every bot always has a job state; combat is an
 // overlay on top of it rather than a separate mode:
 //   advance  — path the waypoint graph (BFS nextHop in map.js) toward the role
 //              goal: Breakers toward their rally nodes (the carrier on to the
@@ -19,21 +16,33 @@
 //   planting — the Breaker carrier channels at the plant spot (3.2 s, rounds.js).
 //   defusing — a Warden channels on the planted Spike (5 s, rounds.js).
 //   engaged  — overlay: a perceived target replaces job movement with fire
-//              control (below) until the target has been unseen for 2.2 s;
-//              the job then resumes where it left off.
-// PERCEPTION (perceive, re-evaluated every 0.12 s): vision cone ±1.15 rad
-// (131 degrees), range 58 m, line of sight against the collider list, blocked
-// by Veil smoke; a target that just hurt the bot is perceived regardless of the
-// cone, and point-blank targets (under 4 m) are always perceived. Hearing:
-// noises written by combat (player shots carry 27 m, bot shots 24 m) are
-// remembered 2.5 s and retarget an unengaged bot's goal to the nearest graph
-// node by the sound. Skill is rolled per bot at 0.80-1.25 and prices reaction
-// time (0.24 + 0.3 x rand / skill s) and aim error (combat.js botFire sigma).
+//              control (below) until the target has been unseen for 2.2 s.
+// PERCEPTION (perceive, every 0.12 s): vision cone ±1.15 rad (131 degrees),
+// range 58 m x exposure — a crouched target (eye height under 1.3 m) is seen
+// at 0.70 x range, a nearly still one (under 0.5 m/s) at 0.85 x, both at
+// 0.60 x, so crossing a lane crouched and slow is real stealth — line of
+// sight against the collider list, blocked by Veil smoke; a target that just
+// hurt the bot, and any target under 4 m, is perceived regardless of the
+// cone. Hearing: noises written by combat (player shots
+// carry 27 m, bot shots 24 m) are remembered 2.5 s and retarget an unengaged
+// bot's goal to the nearest graph node by the sound. CALLOUTS: acquiring a
+// target writes a team sighting (ctx.sightings, fresh 3 s); the closest
+// unengaged teammate in a hold state 6-30 m from it rotates its goal to that
+// lane — a second angle opens while the rest keep their holds. Skill is
+// rolled per bot at 0.80-1.25 and prices reaction time (0.24 + 0.3 x rand /
+// skill s) and aim error (combat.js botFire sigma).
 // FIRE CONTROL (fireControl): close to the weapon's comfort range — 11 m
 // scattergun, 26 m carbine/SMG, 46 m Longbow — then hold position and strafe
 // between bursts of 3 (carbine), 5 (SMG) or 1 (scattergun/Longbow), pausing
 // 0.45 + 0.7 x rand / skill s between bursts. Bots stop to shoot for the same
-// reason the player does: the accuracy model in weapons.js punishes movement.
+// reason the player does: the accuracy model in weapons.js punishes movement,
+// and botFire charges a moving shooter the same tax in its sigma.
+// GRENADE FLUSH (tryFlush): every bot carries one Shard per round. A target
+// seen within the last 4 s but out of sight for 1.1 s — ducked behind cover
+// the bot cannot shoot through — at 7-24 m is flushed: the bot lobs the
+// Shard at the last known position instead of pushing blind. It never throws
+// with a teammate inside 5 m of the point (blast has no friend check,
+// combat.js explode), and the throw costs 0.55 s standing still.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 import { slideMove, segmentBlocked } from './collision.js';
@@ -56,8 +65,8 @@ function teamMats(team) {
   const dark = team === TEAM.BREAKERS ? PALETTE.breakerDark : PALETTE.wardenDark;
   matCache[team] = {
     suit: new THREE.MeshStandardMaterial({ color: dark, roughness: 0.85 }),
-    // the vest carries the team colour with a real emissive component, so a bot reads
-    // as Breaker ember or Warden teal across the yard and in shadow, not only in sunlight
+    // the vest carries the team colour with an emissive component, so a bot reads as
+    // Breaker ember or Warden teal across the yard and in shadow, not only in sunlight
     vest: new THREE.MeshStandardMaterial({ color: main, emissive: main, emissiveIntensity: 0.38, roughness: 0.7 }),
     strip: new THREE.MeshStandardMaterial({ color: main, emissive: main, emissiveIntensity: 2.2, roughness: 0.4 }),
     skin: new THREE.MeshStandardMaterial({ color: 0xc9a186, roughness: 0.8 }),
@@ -76,8 +85,8 @@ export function createBotMesh(team) {
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.66, 0.3), mats.vest);
   torso.position.y = 1.18;
   torso.castShadow = true;
-  // a lit chest strip on the torso's front face: the team's colour as a light source,
-  // the fastest team read in a still or at range
+  // a lit chest strip on the torso's front face — the fastest team read in a
+  // still or at range
   const strip = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.07, 0.02), mats.strip);
   strip.position.set(0, 1.34, -0.16);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), mats.skin);
@@ -126,6 +135,8 @@ export function createBot(team, index, scene) {
     thinkAt: Math.random() * 0.15,
     burstLeft: 0,
     burstWait: 0.4 + Math.random() * 0.5,
+    nade: 1,                // the one Shard this bot carries each round (tryFlush)
+    nadePause: 0,           // standing recovery after a throw
     strafeDir: 1,
     strafeAt: 0,
     walkPhase: Math.random() * 6,
@@ -141,6 +152,8 @@ export function createBot(team, index, scene) {
 const eyeA = new THREE.Vector3();
 const eyeB = new THREE.Vector3();
 const moveDir = new THREE.Vector3();
+const nadeFrom = new THREE.Vector3();
+const nadeDir = new THREE.Vector3();
 
 export function createSquad(scene, map) {
   const bots = [];
@@ -165,6 +178,8 @@ export function createSquad(scene, map) {
         bot.reloadLeft = 0;
         bot.target = null;
         bot.seenAt = -99;
+        bot.nade = 1;
+        bot.nadePause = 0;
         bot.channel = 0;
         bot.directPos = null;
         bot.blindUntil = 0;
@@ -195,6 +210,7 @@ export function stepBot(bot, dt, ctx) {
   if (!bot.alive) return;
   const { time, map } = ctx;
   bot.cooldown = Math.max(0, bot.cooldown - dt);
+  bot.nadePause = Math.max(0, bot.nadePause - dt);
   if (bot.reloadLeft > 0) {
     bot.reloadLeft = Math.max(0, bot.reloadLeft - dt);
     if (bot.reloadLeft === 0) bot.mag = bot.weapon.mag;
@@ -212,8 +228,14 @@ export function stepBot(bot, dt, ctx) {
   let wantSpeed = 0;
   moveDir.set(0, 0, 0);
 
+  // a channel is never interrupted by a throw; anything else may flush first
+  const flushed = bot.state !== 'planting' && bot.state !== 'defusing' && tryFlush(bot, ctx);
+
   if (bot.state === 'planting' || bot.state === 'defusing') {
     // stand still and work: the director advances the channel while this state holds
+  } else if (flushed || bot.nadePause > 0) {
+    // the throw and its recovery: stand, eyes on the target's last cover
+    faceTowards(bot, bot.lastKnown, dt, 10);
   } else if (engaged && bot.target) {
     // combat movement: close to comfort range, then hold and strafe between bursts
     bot.chestPos(eyeA);
@@ -355,7 +377,11 @@ function perceive(bot, ctx) {
     if (!foe.alive || foe.team === bot.team) continue;
     foe.chestPos(eyeB);
     const dist = eyeA.distanceTo(eyeB);
-    if (dist > 58 || dist >= bestDist) continue;
+    // exposure cuts the 58 m range: 0.70 x against a crouched target (eye
+    // height under 1.3 m), 0.85 x against a nearly still one, 0.60 x for both
+    const foeSpeed = Math.hypot(foe.velocity.x, foe.velocity.z);
+    const exposure = (foe.eyeHeight() < 1.3 ? 0.7 : 1) * (foeSpeed < 0.5 ? 0.85 : 1);
+    if (dist > 58 * exposure || dist >= bestDist) continue;
     // vision cone: 130 degrees, unless the foe just hurt us
     const dx = eyeB.x - eyeA.x;
     const dz = eyeB.z - eyeA.z;
@@ -370,7 +396,12 @@ function perceive(bot, ctx) {
     bestDist = dist;
   }
   if (best) {
-    if (bot.target !== best) bot.reaction = 0.24 + Math.random() * 0.3 / bot.skill;
+    if (bot.target !== best) {
+      bot.reaction = 0.24 + Math.random() * 0.3 / bot.skill;
+      // contact callout: the squad learns where the fight is (rotation below)
+      ctx.sightings.push({ pos: best.position.clone(), at: time, team: bot.team, by: bot.id });
+      if (ctx.sightings.length > 12) ctx.sightings.shift();
+    }
     bot.target = best;
     bot.seenAt = time;
     bot.lastKnown.copy(best.position);
@@ -385,6 +416,22 @@ function perceive(bot, ctx) {
         bot.goalNode = nearestNode(ctx.map, noise.pos);
         if (bot.state === 'hold') bot.state = 'advance';
       }
+    }
+  }
+  // callouts: a teammate's fresh sighting rotates the closest holding bot to
+  // that lane — a second angle opens; every other holder keeps its angle
+  for (const s of ctx.sightings) {
+    if (s.team !== bot.team || s.by === bot.id || time - s.at > 3 || bot.state !== 'hold') continue;
+    const d = bot.position.distanceTo(s.pos);
+    if (d < 6 || d > 30) continue;
+    let closest = true;
+    for (const mate of ctx.combatants) {
+      if (mate === bot || !mate.alive || mate.isPlayer || mate.team !== bot.team || mate.state !== 'hold') continue;
+      if (mate.position.distanceTo(s.pos) < d) { closest = false; break; }
+    }
+    if (closest) {
+      bot.goalNode = nearestNode(ctx.map, s.pos);
+      bot.state = 'advance';
     }
   }
   if (time - bot.seenAt > 4) bot.target = null;
@@ -409,4 +456,35 @@ function fireControl(bot, dt, ctx, dist) {
   bot.burstLeft -= 1;
   if (bot.burstLeft === 0) bot.burstWait = 0.45 + Math.random() * 0.7 / bot.skill;
   ctx.fireBot(bot, bot.target, dist);
+}
+
+// The grenade flush (see the header): lob the bot's one Shard at a target
+// that ducked out of sight, so cover stops being free. Returns true on the
+// throw tick; the caller stands the recovery out.
+function tryFlush(bot, ctx) {
+  if (bot.nade <= 0 || !bot.target) return false;
+  const { time } = ctx;
+  if (time < (bot.blindUntil || 0)) return false;
+  const unseen = time - bot.seenAt;
+  if (unseen < 1.1 || unseen > 4) return false;
+  const dx = bot.lastKnown.x - bot.position.x;
+  const dz = bot.lastKnown.z - bot.position.z;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 7 || dist > 24) return false;
+  // blast has no friend check: never throw onto a teammate
+  for (const mate of ctx.combatants) {
+    if (mate === bot || !mate.alive || mate.team !== bot.team) continue;
+    if (mate.position.distanceTo(bot.lastKnown) < 5) return false;
+  }
+  nadeFrom.set(bot.position.x, bot.position.y + 1.45, bot.position.z);
+  nadeDir.subVectors(bot.lastKnown, nadeFrom);
+  nadeDir.y = 0;
+  nadeDir.normalize();
+  nadeDir.y = 0.22;   // the lob: effects adds the throw speed and lift
+  nadeDir.normalize();
+  ctx.effects.throwGrenade('shard', nadeFrom, nadeDir, bot);
+  bot.nade = 0;
+  bot.nadePause = 0.55;
+  bot.cooldown = Math.max(bot.cooldown, 0.55);
+  return true;
 }

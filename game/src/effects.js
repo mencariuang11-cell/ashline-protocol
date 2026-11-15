@@ -1,20 +1,19 @@
-// Transient visuals and the throwable world: pooled tracers and impact bursts (nothing
-// is allocated per shot), pooled glow sprites for muzzle flashes and impact flashes,
-// grenades with real arcs and bounces, Veil smoke that genuinely blocks sightlines,
-// explosion flashes, and the Spike prop with its blinking armed light.
+// Transient visuals and the throwable world: pooled tracers, impact bursts and glow
+// sprites (nothing allocated per shot), grenades with real arcs and bounces, Veil
+// smoke that genuinely blocks sightlines, explosion flashes, and the Spike prop
+// with its blinking armed light.
 //
-// POOLS AND LIFETIMES: the per-shot effects are fixed-size pools, recycled
-// round-robin with zero allocation in the fire path — 28 tracers (a 1 px
-// additive line plus a stretched additive bolt mesh on the same path, 0.09 s
-// life, coloured by the shooter), 12 glow sprites (muzzle and impact flashes,
-// 0.07-0.09 s), 420 spark particles in one Points cloud (gravity, floor
-// clamp). Grenades and smokes are created per throw and removed when spent:
-// a grenade flies at 16 m/s + 4.5 up with floor bounces at 0.38 restitution
-// and wall bounces at 0.4 (fuses: Shard 1.7 s, Flare 1.15 s, Veil 0.9 s); a
-// Veil smoke is a 2.6 m sphere living 13 s, and the same smoke list is what
-// bot vision tests for occlusion. One shared point light serves every muzzle
-// flash (peak intensity 30, 0.055 s); explosions get their own (peak 90, with
-// an expanding shockwave ring).
+// POOLS AND LIFETIMES: fixed-size pools, recycled round-robin with zero
+// allocation in the fire path — 28 tracers (a 1 px additive line plus a
+// stretched additive bolt mesh on the same path, 0.09 s life, coloured by the
+// shooter), 12 glow sprites (muzzle and impact flashes, 0.07-0.09 s), 420
+// spark particles in one Points cloud. Grenades and smokes are created per
+// throw and removed when spent: a grenade flies at 16 m/s + 4.5 up, bouncing
+// at 0.38 (floor) / 0.4 (walls) restitution (fuses: Shard 1.7 s, Flare 1.15 s,
+// Veil 0.9 s); a Veil smoke is a 2.6 m sphere living 13 s, and the same smoke
+// list is what bot vision tests for occlusion. One shared point light serves
+// every muzzle flash (peak 30, 0.055 s); explosions get
+// their own (peak 90, with an expanding shockwave ring).
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
@@ -42,8 +41,8 @@ function glowTexture() {
 export function createEffects(scene, colliders) {
   // tracers: one Line per shot plus a stretched additive bolt mesh on the same path.
   // A WebGL line is one pixel wide and vanishes in a still; the bolt (a unit box
-  // scaled to the shot's length and 0.035 m thick) gives the tracer a body, so a
-  // frozen frame shows solid light streaks in the shooter's team colour.
+  // scaled to the shot's length, 0.035 m thick) gives the tracer a body, so a frozen
+  // frame shows solid light streaks in the shooter's team colour.
   const tracers = [];
   const boltGeo = new THREE.BoxGeometry(1, 1, 1);
   for (let i = 0; i < TRACER_COUNT; i += 1) {

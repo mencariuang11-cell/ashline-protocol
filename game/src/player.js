@@ -1,7 +1,7 @@
 // The player's body: acceleration and friction movement with crouch and jump, resolved
-// as a box against the map colliders one axis at a time, plus health. Tactical movement
-// rules live here — you are fastest with the sidearm out, slower crouched, and your
-// accuracy (in weapons.js) is priced from the speed this module reports.
+// as a box against the map colliders one axis at a time, plus health. Tactical rules
+// live here — fastest with the sidearm out, slower crouched, and your accuracy
+// (in weapons.js) is priced from the speed this module reports.
 //
 // MOVEMENT NUMBERS (constants below): walk 5.3 m/s scaled by weapon weight
 // (sidearm x1.00, SMG x0.98, scattergun x0.96, carbine x0.95, Longbow x0.90),

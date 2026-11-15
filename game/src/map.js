@@ -2,37 +2,33 @@
 // (the Canal west, the Press Hall mid, the Foundry east) converge on the Crucible, a
 // reactor pad in the north yard where the Spike is planted. Every solid is an AABB in
 // `colliders` (bullets and bodies test the same list) with a mesh built beside it, and
-// the waypoint graph the bots walk is laid over the lanes by hand. The furnace splits
-// mid, the slab stack and pipe runs are the Canal's cover, the lava channels are
-// glowing reference lines for callouts, and the Crucible ring (radius 6.5) is the
-// plant zone. Beyond the walls, dead foundry blocks and chimneys stand in the haze.
+// the waypoint graph the bots walk is laid over the lanes by hand.
 //
-// LAYOUT NOTES (metres; x east, z south — the Breakers spawn at the south edge,
-// z 27-29, and attack north; the Wardens spawn at z -25..-27 and defend):
+// LAYOUT NOTES (metres; x east, z south — Breakers spawn at the south edge,
+// z 27-29, and attack north; Wardens spawn at z -25..-27 and defend):
 //   The Canal (west, x -20): a sunken channel running the map's full length —
 //     nodes 15 (-20,16), 16 (-20,2), 17 (-20,-14), 18 (-16,-21). The longest
 //     sightline on the map and the quiet flank; it surfaces at the site's west
 //     door (node 10) or cuts mid through node 19 (-11.8,-12).
 //   The Press Hall (mid, x 0): nodes 3 (0,13), 8 (0,-7), 9 (0,-11.5) — the
 //     shortest route, pinched by the furnace block (x -3..3, z -14..-8) and
-//     the mid gates (nodes 6 and 7 at x ±4.9, z 0), so mid is a sequence of
-//     doorways and a fight, never an open corridor.
+//     the mid gates (nodes 6 and 7 at x ±4.9, z 0): a sequence of doorways
+//     and a fight, never an open corridor.
 //   The Foundry (east, x 12..20): nodes 20 (20,20), 21 (11.8,6), 22 (14.7,-1),
 //     23 (20,-14), 24 (14,-20) — crate cover and the reactor flank, entering
 //     the site at its east door (node 11).
 //   The Crucible (site, centre 0,-19, r 6.5): nodes 10 (-7,-19) west door,
 //     11 (7,-19) east door, 12/13 (-4/4,-24.5) back corners, 14 (0,-24.8) the
-//     Wardens' own door. Three entrances, no safe corner: planting is exposed
-//     to at least two doors from every spot on the ring.
+//     Wardens' door. Three entrances, no safe corner: planting is exposed to
+//     at least two doors from every spot on the ring.
 // WAYPOINT GRAPH: 27 nodes, 35 edges (NODES / EDGES below), BFS shortest paths
 // (nextHop). HOLD_POINTS: Wardens hold nodes 10, 11, 8, 19, 24, 12 (both site
-// doors, mid, the canal link, the east flank, the site's back corner);
-// Breakers rally on 9, 6, 7, 3 (the furnace's north apron, both mid gates at
-// x ±4.9, and mid-south).
+// doors, mid, the canal link, the east flank, the back corner); Breakers
+// rally on 9, 6, 7, 3 (the furnace's north apron, both mid gates, mid-south).
 // LIGHTING RIG: a warm directional sun (0xffc98a, 3.5) with 2048 px shadows, a
 // cool fill (0x7d94b8, 0.7) against it, hemisphere sky/ground (1.28), and three
-// accent points — the furnace's lava light (flickering), the reactor's teal
-// ring light, a warm lamp over mid — so each lane has its own colour temperature.
+// accent points — furnace lava (flickering), the reactor's teal ring, a warm
+// lamp over mid — so each lane has its own colour temperature.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 

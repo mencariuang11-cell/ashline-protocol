@@ -13,21 +13,21 @@
 
   ROUND STRUCTURE: 12-second buy phase, then a 105-second live round. Planting the
   Spike takes 3.2 s of held channel inside the Crucible ring and starts a 35-second
-  fuse; a Warden defuse takes 5 s. A round is won by detonation, defuse, elimination
-  or the clock. First to 7 rounds wins the match, 13 rounds at most.
+  fuse; a Warden defuse takes 5 s. Rounds are won by detonation, defuse, elimination
+  or the clock. First to 7 wins the match, 13 rounds at most.
 
   ECONOMY (full simulation, not a skin): $800 start, $16,000 cap. Kill +$300. Spike
   plant +$800 to the team and +$300 to the planter. Round win +$3,250. Round loss
   +$1,900, rising $250 per consecutive loss to +$2,650. Weapons, armour and grenades
   persist between rounds; magazines do not refill for free.
 
-  WEAPONS (hitscan, head/body hit volumes, distance falloff, armour priced in):
+  WEAPONS (hitscan; head, body and leg hit zones; distance falloff; armour priced in):
   P9 Sidearm (free, semi-auto all-rounder), Mule Scattergun ($1,100, 8 pellets, owns
-  close range), Raptor-9 SMG ($1,400, 750 rpm run-and-gun), VK-7 Carbine ($2,700, the
-  accurate rifle), Longbow DMR ($4,200, 88 damage, 26-power scope). Accuracy is a
-  model, not a crosshair decoration: spread is priced from movement, crouch, airborne
-  state and per-shot bloom, so stopping and bursting wins fights. Armour: Kevlar Vest
-  ($650) and Vest + Helmet ($1,000) cut body damage to 55% and head damage to 50%.
+  close range), Raptor-9 SMG ($1,400, 750 rpm), VK-7 Carbine ($2,700, the accurate
+  rifle), Longbow DMR ($4,200, 88 damage, scoped). Accuracy is a model, not a
+  crosshair decoration: spread is priced from movement, crouch, airborne state and
+  per-shot bloom, so stopping and bursting wins fights. Armour: Kevlar Vest ($650)
+  and Vest + Helmet ($1,000) cut body damage to 55% and head damage to 50%.
 
   GRENADES: Shard ($300, frag — radial blast, halved through cover), Flare ($200,
   blinds by facing and line of sight, bots included), Veil ($300, a smoke wall that
@@ -36,22 +36,23 @@
   BOT AI: nine bots walk a hand-laid 27-node waypoint graph over the three lanes (BFS
   pathfinding), hold defensive angles, push lanes in rush/cover/carrier roles, plant
   and defuse the Spike, and fight in bursts with priced aim error. Perception is a
-  130-degree vision cone plus line-of-sight raycasts plus smoke occlusion, a reaction
-  delay scaled by skill, and hearing: gunfire noise events pull bots to investigate.
+  131-degree vision cone discounted by the target's exposure (a crouched or still
+  target is seen later), line-of-sight raycasts, smoke occlusion, a reaction delay
+  scaled by skill, and hearing: gunfire noise pulls bots to investigate. A spotted
+  enemy is called out — the closest holding teammate rotates onto that lane — and
+  every bot carries one Shard to flush a target out of cover.
 
-  TECH: fixed 60 Hz simulation decoupled from render rate, WebAudio-synthesised gunfire
-  and round sounds (no audio assets), a live minimap and kill feed, pooled tracers,
-  particles and glow sprites (nothing allocated per shot), and deterministic
-  ?shot=<name>&seed=<n> staging used to render the entry's screenshots.
+  TECH: fixed 60 Hz simulation decoupled from render rate, WebAudio-synthesised
+  sounds (no audio assets), a live minimap and kill feed, pooled tracers, particles
+  and glow sprites (nothing allocated per shot), and deterministic ?shot=<name>
+  staging used to render the entry's screenshots.
 
   HOW TO READ THIS ENTRY: the DESIGN SUMMARY at the top of src/main.js maps each
-  system to the file that implements it, and each module's header documents its
-  own numbers — the derived weapon table in src/weapons.js, the bot state
-  machine in src/bots.js, the economy and round timing in src/rounds.js, the
-  damage model in src/combat.js, the map graph in src/map.js. The four
-  screenshots show those same systems live: a mid-round firefight (cover), a
-  Spike plant under its progress ring (site), a scoped Longbow duel (duel), and
-  the buy phase under the round-end card (buy).
+  system to the file that implements it, and each module's header documents its own
+  numbers. The four screenshots show those same systems live: a mid-round firefight
+  (cover), a Spike plant under its progress ring with a defender's Shard bursting
+  on the approach (site), a scoped Longbow duel (duel), and the buy phase under
+  the round-end card (buy).
 -->
 <style>
   :root {

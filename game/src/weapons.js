@@ -2,11 +2,10 @@
 // always carry and one primary slot. Accuracy is the heart of it: spread is smallest
 // standing still and crouched, grows while moving or airborne, and blooms with each
 // shot before it settles — so the game rewards stopping, aiming and firing in bursts.
-// Roster: P9 Sidearm (free, 26 dmg, semi-auto all-rounder) · Mule Scattergun ($1,100,
-// 8 pellets x 9 dmg, owns close range) · Raptor-9 SMG ($1,400, 18 dmg, 750 rpm,
-// run-and-gun) · VK-7 Carbine ($2,700, 33 dmg, 600 rpm, the accurate rifle) · Longbow
-// DMR ($4,200, 88 dmg, scoped). Armour: Kevlar Vest $650, Vest + Helmet $1,000.
-// Grenades: Shard frag $300, Flare blind $200, Veil smoke $300.
+// Roster (full derived table below): P9 Sidearm (free) · Mule Scattergun ($1,100) ·
+// Raptor-9 SMG ($1,400) · VK-7 Carbine ($2,700) · Longbow DMR ($4,200, scoped).
+// Armour: Kevlar Vest $650, Vest + Helmet $1,000. Grenades: Shard $300,
+// Flare $200, Veil $300.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
@@ -19,29 +18,25 @@ export const WEAPONS = {
 };
 //
 // WEAPON TABLE, derived from the rows above (DPS = damage x pellets x rpm / 60 at
-// point-blank, before falloff; TTK against 100 HP with the first shot at t = 0;
-// "vs vest" applies the armor body multiplier 0.55 from combat.js):
+// point-blank, before falloff; TTK vs 100 HP, first shot at t = 0; "vs vest"
+// applies the armor body multiplier 0.55 from combat.js):
 //   weapon          price   dmg    head   rpm   mag+res   falloff    DPS     body STK/TTK      vs vest STK/TTK
 //   P9 Sidearm      $0      26     x3.2   360   12+48     18-46 m    156.0   4 / 0.50 s        7 / 1.00 s
 //   Mule Scattergun $1,100  9 x8   x2.0   66    6+24      6-20 m     79.2*   2 shells / 0.91 s 3 shells / 1.82 s
 //   Raptor-9 SMG    $1,400  22     x2.6   750   32+96     14-40 m    275.0   5 / 0.32 s        9 / 0.64 s
 //   VK-7 Carbine    $2,700  33     x3.4   620   30+90     26-70 m    341.0   4 / 0.29 s        6 / 0.48 s
 //   Longbow DMR     $4,200  88     x2.2   46    5+20      40-110 m   67.5    2 / 1.30 s        3 / 2.61 s
-//   * scattergun DPS counts all 8 pellets landing: 72 damage per shell to the body,
-//   144 to the head. Headshot damage at point-blank: sidearm 83.2, SMG 57.2,
-//   carbine 112.2 (a one-shot kill), Longbow 193.6 (a one-shot kill). A helmet
-//   (armor tier 2) halves head damage: carbine 56.1, Longbow 96.8 — the Longbow
-//   still nearly kills, the carbine no longer does. Reload times run 1.3 s
-//   (sidearm) to 2.8 s (Longbow); a dry weapon is re-issued with its base reserve
-//   at round start (see newRound below), partially spent reserves never refill free.
-// GRENADE SPECS (effects.js / rounds.js own the numbers): Shard $300, carry 2 —
-//   frag, 1.7 s fuse, blast radius 6.5 m: 95 damage at the centre falling
-//   linearly to 8% at the edge, and x0.45 through cover (combat.js explode).
-//   Flare $200, carry 2 — 1.15 s fuse, blinds bots 2.2-3.8 s and whites out a
-//   player facing the pop within 24 m. Veil $300, carry 1 — 0.9 s fuse, a 2.6 m
-//   smoke sphere for 13 s that blocks line of sight for bots and bullets' spotters.
-//   Total grenade carry cap across types: 4. Armor: vest $650 = tier 1 (body
-//   damage x0.55), vest + helmet $1,000 = tier 2 (plus head damage x0.5).
+//   * scattergun DPS counts all 8 pellets landing: 72 per shell to the body,
+//   144 to the head. Point-blank headshots: sidearm 83.2, SMG 57.2, carbine
+//   112.2 and Longbow 193.6 (both one-shot kills); a helmet halves them
+//   (carbine 56.1, Longbow 96.8 — the Longbow still nearly kills). Reloads run
+//   1.3 s (sidearm) to 2.8 s (Longbow); a dry weapon is re-issued with its base
+//   reserve at round start (newRound below), partial reserves never refill free.
+// GRENADE SPECS (effects.js / rounds.js own the numbers): Shard $300, carry 2
+//   (frag, 1.7 s fuse, 6.5 m blast, x0.45 through cover); Flare $200, carry 2
+//   (1.15 s fuse, blinds bots 2.2-3.8 s); Veil $300, carry 1 (0.9 s fuse,
+//   2.6 m smoke sphere, 13 s). Carry cap: 4. Armor: vest $650 = tier 1
+//   (body x0.55), vest + helmet $1,000 = tier 2 (+ head x0.5).
 export const GRENADES = {
   shard: { id: 'shard', name: 'Shard Grenade', price: 300, cap: 2, blurb: 'Frag: bursts for heavy damage' },
   flare: { id: 'flare', name: 'Flare Grenade', price: 200, cap: 2, blurb: 'Blinds whoever faces the pop' },
@@ -130,8 +125,8 @@ export function createLoadout(camera, audio) {
     dark: new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.5, metalness: 0.5 }),
     grip: new THREE.MeshStandardMaterial({ color: 0x59462e, roughness: 0.9 }),
     wood: new THREE.MeshStandardMaterial({ color: 0x6e4f2a, roughness: 0.85 }),
-    // a lit ember stripe along each receiver: the held gun carries the Breaker colour
-    // and catches the light, so the viewmodel never reads as a black silhouette
+    // a lit ember stripe along each receiver, so the viewmodel never reads as
+    // a black silhouette
     accent: new THREE.MeshStandardMaterial({ color: 0x3a2410, emissive: PALETTE.breaker, emissiveIntensity: 1.5, roughness: 0.5 }),
   };
   const models = {};
@@ -217,8 +212,8 @@ export function createLoadout(camera, audio) {
   // the Longbow's 0.05 makes a moving shot nearly hopeless, by design). Bloom
   // grows 0.006 per shot to a 0.03 cap and decays at 0.028/s, so even a standing
   // spray wanders; short bursts from a stop are the accurate play. The HUD
-  // crosshair gap is this number made visible, and the bots obey the same trade:
-  // their fire control stops them before each burst (bots.js).
+  // crosshair gap is this number made visible, and bots pay the same tax:
+  // botFire's sigma grows with the shooter's own speed (combat.js).
   loadout.spread = (speed, crouching, airborne) => {
     const def = loadout.def();
     let spread = def.spreadStill + Math.min(1, speed / 5.2) * def.spreadMove + loadout.bloom;
@@ -258,9 +253,9 @@ export function createLoadout(camera, audio) {
     loadout.reloadLeft = 0;
     loadout.cooldown = 0;
     loadout.bloom = 0;
-    // a weapon fired completely dry (magazine and reserve both empty) is re-issued
-    // with its base reserve at round start, so a long match can never strand the
-    // player with no working gun; partially spent reserves are never topped up free
+    // a weapon fired completely dry is re-issued with its base reserve at round
+    // start, so a long match can never strand the player with no working gun;
+    // spent reserves are never topped up free
     for (const id of loadout.owned) {
       const a = ammo[id];
       if (a.mag <= 0 && a.reserve <= 0) a.reserve = WEAPONS[id].reserve;

@@ -1,7 +1,7 @@
 // Every 2D element: HUD readouts, kill feed, centre banners, the buy menu, the plant
 // channel bar, damage and flash overlays, the DMR scope, and a live minimap drawn from
-// the same collider list the bullets use. The simulation calls these; it never touches
-// the DOM itself.
+// the same collider list the bullets use. The simulation calls these; it never
+// touches the DOM itself.
 //
 // HUD MAP — every readout is live from the simulation state, refreshed per frame:
 //   bottom-left: health number and bar, armor tier tag, grenade counts (3/4/5).
@@ -11,8 +11,8 @@
 //   kill feed, last 5 events. Left, under the minimap: the objective line.
 //   centre: the dynamic crosshair whose gap is the current spread in pixels, a
 //   hitmarker (gold, red on a kill), a damage-direction arc, and the plant /
-//   defuse channel ring with its progress bar. Round banners announce LIVE,
-//   ROUND WON / LOST with the reason, and MATCH POINT at 6 rounds.
+//   defuse channel ring with its progress bar. Round banners announce LIVE
+//   and ROUND WON / LOST with the reason, and MATCH POINT at 6 rounds.
 import { WEAPONS, GRENADES, GEAR, SHOP_ORDER } from './weapons.js';
 import { SITE } from './map.js';
 
