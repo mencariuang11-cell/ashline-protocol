@@ -5,6 +5,29 @@
 // defuse; first to 7 rounds wins, 13 at most. Economy: $800 start, $16,000 cap, kill
 // +$300, plant +$800 team / +$300 planter, round win +$3,250, round loss +$1,900 rising
 // $250 per consecutive loss to +$2,650. Loadouts persist between rounds.
+//
+// ECONOMY, WORKED THROUGH (award() in state.js applies every line):
+//   loss streak payouts: 1st loss $1,900, then $2,150, $2,400, $2,650, capped.
+//   Pistol round: everyone starts on $800 and the free P9. Win it and a player
+//   banks $800 + $3,250 = $4,050 — a VK-7 carbine ($2,700) plus a vest ($650)
+//   with $700 spare for a Shard. Lose it and $800 + $1,900 = $2,700 exactly
+//   buys the carbine alone, or an SMG + vest + Flare with $50 spare. Plant the
+//   Spike and lose the round anyway: $800 + $1,900 + $800 plant money (+$300
+//   to the planter) still funds a force buy. A full buy — Longbow $4,200 +
+//   helmet $1,000 + Shard $300 + Veil $300 — costs $5,800, reachable after two
+//   won rounds. Kills pay the player $300 each; bot wallets are not tracked.
+// ROUND-FLOW TIMING SPEC (MATCH in state.js, channels here):
+//   BUY 12 s (buy menu open, teams frozen at spawn) -> LIVE up to 105 s ->
+//   on plant, PLANTED replaces the clock with the 35 s fuse -> ROUND_END 4.5 s
+//   (banner + score) -> next BUY. Plant channel 3.2 s inside the Crucible ring
+//   (r 6.5 m), defuse channel 5 s; any channel breaks on damage, movement keys,
+//   or leaving the ring. Detonation: 130 damage inside 9 m. The planted Spike
+//   beeps every 1.1 s while more than 15 s remain, 0.7 s under 15 s, 0.35 s
+//   under 6 s, and its lamp strobes faster on the same schedule. Win checks run
+//   every tick in this order: channels first (a completed defuse wins on the
+//   spot), then elimination, then the clock — the Wardens win a LIVE round on
+//   timeout, and a PLANTED round ends only by defuse, elimination of the
+//   Wardens, or the fuse reaching zero (detonation, Breakers win).
 import * as THREE from 'three';
 import { PHASE, TEAM, MATCH, award } from './state.js';
 import { SITE, SPAWNS } from './map.js';

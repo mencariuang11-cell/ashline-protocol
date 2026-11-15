@@ -5,6 +5,23 @@
 // aim error priced from their skill, the range and the target's speed. Armour cuts
 // body damage to 55% and head damage to 50%; every hit spawns pooled impact sparks
 // plus a glow flash — bloodless, and readable at a glance in a screenshot.
+//
+// DAMAGE MODEL (resolveHit / applyDamage below), applied in this order:
+//   1. hit volume: the head sphere (r 0.21 m at the head bone) is tested before
+//      the body capsule (r 0.37 m, sampled at 5 heights); the nearer hit wins,
+//      and a world box nearer than both stops the shot entirely.
+//   2. falloff: full damage out to the weapon's falloffFrom, then linear down
+//      to a 0.45 floor at falloffTo (carbine 26-70 m, Longbow 40-110 m).
+//   3. headshot: a head hit multiplies by the weapon's headMult (2.0-3.4).
+//   4. armor: tier 1 (vest) multiplies BODY damage by 0.55 and does nothing
+//      for the head; tier 2 (vest + helmet) also multiplies HEAD damage by
+//      0.5. So a vest never saves you from a headshot, and a helmet turns the
+//      carbine's 112.2 headshot into 56.1 — survivable, barely.
+//   Blast damage (explode) skips steps 1-3: maxDamage at the centre, linear to
+//   an 8% floor at radius + 0.4, x0.45 if a collider blocks the line to the
+//   victim. Bot aim error (botFire): sigma = 0.030 / skill + target speed x
+//   0.0035 + range past 24 m x 0.0006, applied as a triangular jitter — a fast
+//   target at range is hard to hit, a standing one at 10 m is not.
 import * as THREE from 'three';
 import { rayHitWorld } from './collision.js';
 import { PALETTE } from './palette.js';

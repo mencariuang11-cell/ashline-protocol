@@ -8,6 +8,32 @@
 // site angles, rotate on contact and defuse. Perception is a 130-degree cone out to
 // 58 m, discounted by target speed and crouch, with a reaction delay of 0.24 s and up
 // scaled by skill; gunfire noise (radius 22 m) pulls nearby bots to investigate.
+//
+// BOT STATE MACHINE (stepBot). Every bot always has a job state, and combat is an
+// overlay on top of it rather than a separate mode:
+//   advance  — path the waypoint graph (BFS nextHop in map.js) toward the role
+//              goal: Breakers toward their rally nodes (the carrier on to the
+//              plant spot), Wardens toward their hold points, and every Warden
+//              rotating to the site once the Spike is planted.
+//   hold     — on the goal node: stand the angle, scan ±0.8 rad, small strafes.
+//   planting — the Breaker carrier channels at the plant spot (3.2 s, rounds.js).
+//   defusing — a Warden channels on the planted Spike (5 s, rounds.js).
+//   engaged  — overlay: a perceived target replaces job movement with fire
+//              control (below) until the target has been unseen for 2.2 s;
+//              the job then resumes where it left off.
+// PERCEPTION (perceive, re-evaluated every 0.12 s): vision cone ±1.15 rad
+// (131 degrees), range 58 m, line of sight against the collider list, blocked
+// by Veil smoke; a target that just hurt the bot is perceived regardless of the
+// cone, and point-blank targets (under 4 m) are always perceived. Hearing:
+// noises written by combat (player shots carry 27 m, bot shots 24 m) are
+// remembered 2.5 s and retarget an unengaged bot's goal to the nearest graph
+// node by the sound. Skill is rolled per bot at 0.80-1.25 and prices reaction
+// time (0.24 + 0.3 x rand / skill s) and aim error (combat.js botFire sigma).
+// FIRE CONTROL (fireControl): close to the weapon's comfort range — 11 m
+// scattergun, 26 m carbine/SMG, 46 m Longbow — then hold position and strafe
+// between bursts of 3 (carbine), 5 (SMG) or 1 (scattergun/Longbow), pausing
+// 0.45 + 0.7 x rand / skill s between bursts. Bots stop to shoot for the same
+// reason the player does: the accuracy model in weapons.js punishes movement.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 import { slideMove, segmentBlocked } from './collision.js';
@@ -30,7 +56,10 @@ function teamMats(team) {
   const dark = team === TEAM.BREAKERS ? PALETTE.breakerDark : PALETTE.wardenDark;
   matCache[team] = {
     suit: new THREE.MeshStandardMaterial({ color: dark, roughness: 0.85 }),
-    vest: new THREE.MeshStandardMaterial({ color: main, roughness: 0.7 }),
+    // the vest carries the team colour with a real emissive component, so a bot reads
+    // as Breaker ember or Warden teal across the yard and in shadow, not only in sunlight
+    vest: new THREE.MeshStandardMaterial({ color: main, emissive: main, emissiveIntensity: 0.38, roughness: 0.7 }),
+    strip: new THREE.MeshStandardMaterial({ color: main, emissive: main, emissiveIntensity: 2.2, roughness: 0.4 }),
     skin: new THREE.MeshStandardMaterial({ color: 0xc9a186, roughness: 0.8 }),
     gun: new THREE.MeshStandardMaterial({ color: 0x22262c, roughness: 0.5, metalness: 0.5 }),
   };
@@ -47,6 +76,10 @@ export function createBotMesh(team) {
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.66, 0.3), mats.vest);
   torso.position.y = 1.18;
   torso.castShadow = true;
+  // a lit chest strip on the torso's front face: the team's colour as a light source,
+  // the fastest team read in a still or at range
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.07, 0.02), mats.strip);
+  strip.position.set(0, 1.34, -0.16);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), mats.skin);
   head.position.y = 1.68;
   head.castShadow = true;
@@ -57,7 +90,7 @@ export function createBotMesh(team) {
   const arm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), mats.suit);
   arm.position.set(0.18, 1.28, -0.05);
   arm.rotation.x = -0.7;
-  group.add(legL, legR, torso, head, cap, gun, arm);
+  group.add(legL, legR, torso, strip, head, cap, gun, arm);
   return { group, legL, legR, torso, head };
 }
 

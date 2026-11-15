@@ -17,6 +17,31 @@ export const WEAPONS = {
   carbine: { id: 'carbine', name: 'VK-7 Carbine', slot: 'primary', price: 2700, damage: 33, headMult: 3.4, rpm: 620, mag: 30, reserve: 90, reload: 2.1, spreadStill: 0.0035, spreadMove: 0.026, falloffFrom: 26, falloffTo: 70, pellets: 1, auto: true, kick: 0.013, sound: 'rifle', zoom: 0 },
   longbow: { id: 'longbow', name: 'Longbow DMR', slot: 'primary', price: 4200, damage: 88, headMult: 2.2, rpm: 46, mag: 5, reserve: 20, reload: 2.8, spreadStill: 0.0006, spreadMove: 0.05, falloffFrom: 40, falloffTo: 110, pellets: 1, auto: false, kick: 0.045, sound: 'sniper', zoom: 26 },
 };
+//
+// WEAPON TABLE, derived from the rows above (DPS = damage x pellets x rpm / 60 at
+// point-blank, before falloff; TTK against 100 HP with the first shot at t = 0;
+// "vs vest" applies the armor body multiplier 0.55 from combat.js):
+//   weapon          price   dmg    head   rpm   mag+res   falloff    DPS     body STK/TTK      vs vest STK/TTK
+//   P9 Sidearm      $0      26     x3.2   360   12+48     18-46 m    156.0   4 / 0.50 s        7 / 1.00 s
+//   Mule Scattergun $1,100  9 x8   x2.0   66    6+24      6-20 m     79.2*   2 shells / 0.91 s 3 shells / 1.82 s
+//   Raptor-9 SMG    $1,400  22     x2.6   750   32+96     14-40 m    275.0   5 / 0.32 s        9 / 0.64 s
+//   VK-7 Carbine    $2,700  33     x3.4   620   30+90     26-70 m    341.0   4 / 0.29 s        6 / 0.48 s
+//   Longbow DMR     $4,200  88     x2.2   46    5+20      40-110 m   67.5    2 / 1.30 s        3 / 2.61 s
+//   * scattergun DPS counts all 8 pellets landing: 72 damage per shell to the body,
+//   144 to the head. Headshot damage at point-blank: sidearm 83.2, SMG 57.2,
+//   carbine 112.2 (a one-shot kill), Longbow 193.6 (a one-shot kill). A helmet
+//   (armor tier 2) halves head damage: carbine 56.1, Longbow 96.8 — the Longbow
+//   still nearly kills, the carbine no longer does. Reload times run 1.3 s
+//   (sidearm) to 2.8 s (Longbow); a dry weapon is re-issued with its base reserve
+//   at round start (see newRound below), partially spent reserves never refill free.
+// GRENADE SPECS (effects.js / rounds.js own the numbers): Shard $300, carry 2 —
+//   frag, 1.7 s fuse, blast radius 6.5 m: 95 damage at the centre falling
+//   linearly to 8% at the edge, and x0.45 through cover (combat.js explode).
+//   Flare $200, carry 2 — 1.15 s fuse, blinds bots 2.2-3.8 s and whites out a
+//   player facing the pop within 24 m. Veil $300, carry 1 — 0.9 s fuse, a 2.6 m
+//   smoke sphere for 13 s that blocks line of sight for bots and bullets' spotters.
+//   Total grenade carry cap across types: 4. Armor: vest $650 = tier 1 (body
+//   damage x0.55), vest + helmet $1,000 = tier 2 (plus head damage x0.5).
 export const GRENADES = {
   shard: { id: 'shard', name: 'Shard Grenade', price: 300, cap: 2, blurb: 'Frag: bursts for heavy damage' },
   flare: { id: 'flare', name: 'Flare Grenade', price: 200, cap: 2, blurb: 'Blinds whoever faces the pop' },
@@ -66,25 +91,30 @@ function buildViewModel(def, mats) {
   };
   if (def.id === 'sidearm') {
     add(0.055, 0.09, 0.24, 0, 0, -0.08);
+    add(0.057, 0.015, 0.1, 0, 0.052, -0.1, mats.accent);
     add(0.05, 0.11, 0.07, 0, -0.09, 0.03, mats.grip, 0.25);
   } else if (def.id === 'scatter') {
     add(0.07, 0.09, 0.62, 0, 0, -0.2);
+    add(0.072, 0.015, 0.2, 0, 0.052, -0.25, mats.accent);
     add(0.055, 0.055, 0.34, 0, 0.01, -0.62, mats.dark);
     add(0.075, 0.08, 0.2, 0, -0.045, -0.28, mats.wood);
     add(0.06, 0.1, 0.18, 0, -0.03, 0.22, mats.wood);
   } else if (def.id === 'smg') {
     add(0.065, 0.1, 0.4, 0, 0, -0.12);
+    add(0.067, 0.015, 0.16, 0, 0.057, -0.15, mats.accent);
     add(0.04, 0.04, 0.2, 0, 0.015, -0.42, mats.dark);
     add(0.045, 0.17, 0.06, 0, -0.13, -0.05, mats.grip, 0.12);
     add(0.05, 0.09, 0.06, 0, -0.08, 0.12, mats.grip, 0.3);
   } else if (def.id === 'longbow') {
     add(0.06, 0.09, 0.66, 0, 0, -0.24);
+    add(0.062, 0.015, 0.24, 0, 0.052, -0.3, mats.accent);
     add(0.035, 0.035, 0.44, 0, 0.02, -0.76, mats.dark);
     add(0.05, 0.15, 0.06, 0, -0.11, -0.08, mats.grip, 0.1);
     add(0.055, 0.07, 0.2, 0, 0.1, -0.18, mats.dark);          // scope tube
     add(0.07, 0.1, 0.24, 0, -0.02, 0.3, mats.wood);           // stock
   } else {
     add(0.07, 0.1, 0.5, 0, 0, -0.18);
+    add(0.072, 0.015, 0.2, 0, 0.057, -0.22, mats.accent);
     add(0.04, 0.04, 0.3, 0, 0.02, -0.56, mats.dark);
     add(0.045, 0.16, 0.06, 0, -0.12, -0.02, mats.grip, 0.15);
     add(0.05, 0.09, 0.07, 0, -0.07, 0.16, mats.grip, 0.3);
@@ -96,10 +126,13 @@ function buildViewModel(def, mats) {
 
 export function createLoadout(camera, audio) {
   const mats = {
-    body: new THREE.MeshStandardMaterial({ color: 0x3c434c, roughness: 0.45, metalness: 0.55 }),
-    dark: new THREE.MeshStandardMaterial({ color: 0x22262c, roughness: 0.5, metalness: 0.5 }),
+    body: new THREE.MeshStandardMaterial({ color: 0x4b555f, roughness: 0.42, metalness: 0.5 }),
+    dark: new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.5, metalness: 0.5 }),
     grip: new THREE.MeshStandardMaterial({ color: 0x59462e, roughness: 0.9 }),
     wood: new THREE.MeshStandardMaterial({ color: 0x6e4f2a, roughness: 0.85 }),
+    // a lit ember stripe along each receiver: the held gun carries the Breaker colour
+    // and catches the light, so the viewmodel never reads as a black silhouette
+    accent: new THREE.MeshStandardMaterial({ color: 0x3a2410, emissive: PALETTE.breaker, emissiveIntensity: 1.5, roughness: 0.5 }),
   };
   const models = {};
   for (const def of Object.values(WEAPONS)) {
@@ -176,6 +209,16 @@ export function createLoadout(camera, audio) {
     audio.reload();
     return true;
   };
+  // THE ACCURACY MODEL — why stopping pays. Effective spread in radians:
+  //   spreadStill + min(1, groundSpeed / 5.2) x spreadMove + bloom,
+  //   then x 0.65 while crouched, + 0.03 while airborne.
+  // spreadStill is the standing-still floor (carbine 0.0035, Longbow 0.0006);
+  // spreadMove is the full-speed penalty (carbine 0.026 — over 7x its floor;
+  // the Longbow's 0.05 makes a moving shot nearly hopeless, by design). Bloom
+  // grows 0.006 per shot to a 0.03 cap and decays at 0.028/s, so even a standing
+  // spray wanders; short bursts from a stop are the accurate play. The HUD
+  // crosshair gap is this number made visible, and the bots obey the same trade:
+  // their fire control stops them before each burst (bots.js).
   loadout.spread = (speed, crouching, airborne) => {
     const def = loadout.def();
     let spread = def.spreadStill + Math.min(1, speed / 5.2) * def.spreadMove + loadout.bloom;
@@ -215,6 +258,13 @@ export function createLoadout(camera, audio) {
     loadout.reloadLeft = 0;
     loadout.cooldown = 0;
     loadout.bloom = 0;
+    // a weapon fired completely dry (magazine and reserve both empty) is re-issued
+    // with its base reserve at round start, so a long match can never strand the
+    // player with no working gun; partially spent reserves are never topped up free
+    for (const id of loadout.owned) {
+      const a = ammo[id];
+      if (a.mag <= 0 && a.reserve <= 0) a.reserve = WEAPONS[id].reserve;
+    }
     if (loadout.primary) loadout.current = loadout.primary;
     showCurrent();
   };

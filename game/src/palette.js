@@ -2,11 +2,11 @@
 // furnace light, and the two team colours — Warden teal against Breaker ember. Every
 // material in the game is built from these values so the scene reads at a glance.
 export const PALETTE = {
-  sky: 0x1b2432,        // dusk blue overhead
-  skyZenith: 0x0c141f,  // top of the sky dome
+  sky: 0x223148,        // dusk blue overhead
+  skyZenith: 0x111e30,  // top of the sky dome
   skyHorizon: 0xc96a34, // burnt-orange band where the sun went down
   sunTint: 0xffb45e,    // afterglow tint around the set sun
-  fog: 0x232d3a,
+  fog: 0x2b3745,
   ground: 0x3a4149,     // worn concrete
   groundDark: 0x2e343c,
   wall: 0x5b6572,       // slate cladding
@@ -22,9 +22,9 @@ export const PALETTE = {
   lampWarm: 0xffb45e,
   lampCool: 0x9fd8ff,
   warden: 0x2fd4c4,     // defending team
-  wardenDark: 0x177a70,
+  wardenDark: 0x1e8a7d,
   breaker: 0xff8a3c,    // attacking team
-  breakerDark: 0xa34d14,
+  breakerDark: 0xbc5c1a,
   ink: 0xf2ede3,
   tracer: 0xffd9a0,
   smoke: 0x9aa3ad,

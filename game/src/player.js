@@ -2,6 +2,14 @@
 // as a box against the map colliders one axis at a time, plus health. Tactical movement
 // rules live here — you are fastest with the sidearm out, slower crouched, and your
 // accuracy (in weapons.js) is priced from the speed this module reports.
+//
+// MOVEMENT NUMBERS (constants below): walk 5.3 m/s scaled by weapon weight
+// (sidearm x1.00, SMG x0.98, scattergun x0.96, carbine x0.95, Longbow x0.90),
+// crouch 2.4 m/s; ground acceleration blend 40/s, air acceleration 8/s,
+// friction 9/s, gravity 20 m/s^2, jump velocity 6.1 m/s. Body radius 0.34 m,
+// height 1.72 m standing and 1.12 m crouched — a crouched player is fully
+// hidden behind the map's 1.2 m barriers that a standing player towers over.
+// Eye height 1.60 m standing, 1.02 m crouched, eased between the two.
 import * as THREE from 'three';
 import { bodyOverlaps } from './collision.js';
 

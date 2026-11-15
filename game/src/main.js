@@ -3,6 +3,52 @@
 // firing, reloading, buying, throwing, planting — is wired here from input edges to
 // the modules that own it. ?shot=<name>&seed=<n> stages a deterministic frame for
 // screenshots and sets window.__shotReady, exactly like the kit's starter does.
+//
+// DESIGN SUMMARY — what the game is and where each system lives. A 5v5 tactical
+// shooter (the player plus 4 Breaker bots against 5 Warden bots) on one original
+// map, Foundry Nine: plant the Spike at the Crucible and defend its fuse, defuse
+// it, or eliminate the other team. First to 7 rounds, 13 maximum. The simulation
+// runs at a fixed 60 Hz; rendering is decoupled from it.
+//
+// COMPLETE GAME (this file, src/rounds.js, src/hud.js)
+//   First-person camera at the body's eye height (src/player.js: 1.60 m standing,
+//   1.02 m crouched), pointer-lock mouse look (src/input.js), WASD movement.
+//   Weapons fire, reload (R, or automatically on an empty magazine) and run dry:
+//   every gun tracks a magazine and a finite reserve (src/weapons.js). Rounds end
+//   in a win or a loss and the next round starts on its own; a finished match
+//   returns to the menu. The HUD (game/index.html + src/hud.js) shows health,
+//   armor, money, magazine and reserve ammunition, the round timer, both team
+//   scores, a kill feed, a live minimap, the objective line and round banners.
+//
+// GUNPLAY (src/weapons.js, src/combat.js)
+//   Hitscan shots test a head sphere (r 0.21 m) before the body capsule
+//   (r 0.37 m); headshots multiply damage by the weapon's headMult: 3.4 carbine,
+//   3.2 sidearm, 2.6 SMG, 2.2 Longbow, 2.0 scattergun. Spread = spreadStill +
+//   movement share of spreadMove + bloom per shot; standing still is tightest,
+//   crouching multiplies spread by 0.65, and firing on the move or airborne is
+//   punished — stopping to aim pays. Recoil kicks the view and the viewmodel.
+//   Movement integrates acceleration and friction (ground accel 40, air accel 8),
+//   crouches on C/Ctrl, and every body collides with the map's boxes one axis at
+//   a time so it slides along walls (src/collision.js).
+//
+// TACTICS (src/rounds.js, src/bots.js, src/weapons.js)
+//   Objective: carry the Spike, plant it at the Crucible (3.2 s channel), defend
+//   a 35 s fuse, or defuse it (5 s channel). Money is earned every round — kill
+//   $300, plant $800 to the team and $300 to the planter, round win $3,250, a
+//   loss $1,900 plus a streak bonus — and spent in the buy menu (B): 5 weapons,
+//   3 grenade types (Shard frag, Flare blind, Veil smoke), 2 armor tiers. Bots
+//   path over a 27-node waypoint graph, hold set positions (HOLD_POINTS in
+//   src/map.js), plant and defuse, and react to sight (131-degree vision cone,
+//   line of sight, smoke blocks vision) and to sound (gunfire noise remembered
+//   2.5 s pulls an unengaged bot to investigate).
+//
+// MAP AND LOOK (src/map.js, src/palette.js)
+//   Foundry Nine is built from boxes only: three lanes (the Canal west, the
+//   Press Hall mid, the Foundry east) joining at the Crucible, with crates,
+//   barriers and a sunken canal
+//   for cover and sightlines. One dusk palette (src/palette.js): ember orange
+//   for the Breakers, teal for the Wardens, warm lamp light against cool sky
+//   fill, a gradient sky dome, a skyline silhouette and drifting embers.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 import { buildMap, SITE } from './map.js';
@@ -39,12 +85,12 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.16;
+renderer.toneMappingExposure = 1.3;
 document.getElementById('game').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(PALETTE.sky);
-scene.fog = new THREE.Fog(new THREE.Color(PALETTE.fog), 30, 100);
+scene.fog = new THREE.Fog(new THREE.Color(PALETTE.fog), 34, 115);
 
 // The sky is a gradient dome, not a flat clear colour: deep zenith, a burnt-orange
 // band at the horizon, and warm afterglow pooled around where the sun went down.
@@ -275,6 +321,7 @@ function stageShot(name) {
   rounds.setUiActive(false);
   hud.hideMenu();
   hud.showBuy(false);
+  hud.banner('', '', 0);   // clear the boot banner now, so a staged branch may set its own
   state.round = 8;
   state.score.breakers = 4;
   state.score.wardens = 3;
@@ -291,16 +338,21 @@ function stageShot(name) {
   loadout.primary = 'carbine';
   loadout.switchTo('carbine');
   if (name === 'buy') {
+    // The between-rounds moment: the round-end card still up (score 5-3, the Spike
+    // did it) while the buy menu shows what the win pays for — full economy in frame.
     state.phase = PHASE.BUY;
     state.phaseTime = 9;
+    state.score.breakers = 5;
     state.playerMoney = 4350;
     loadout.armor = 1;
     loadout.grenades.shard = 1;
+    loadout.grenades.flare = 1;
     body.position.set(0, 0, 24.8);
     body.yaw = 0;
     place(bots[3], -3.4, 24.5, 0.4);
     place(bots[1], 3.6, 25, -0.3);
     hud.showBuy(true);
+    hud.banner('ROUND WON', 'The Spike detonated · Breakers 5 — Wardens 3', 30, 'win');
   } else if (name === 'site') {
     // The plant itself: the channel ring at two-thirds around the crosshair, the
     // Spike on the pad in front of the player, a teammate covering the pad and
@@ -314,9 +366,11 @@ function stageShot(name) {
     body.yaw = 0.72;
     body.pitch = -0.05;
     body.hp = 84;
+    loadout.grenades.shard = 1;
     place(bots[0], 5.5, -21.5, 2.4);          // teammate covering the pad
-    place(bots[6], -6.5, -13.5, 1.9);         // Warden pushing the west lane
+    place(bots[6], -3.2, -14.8, -1.97);       // Warden defender in frame, facing the planter
     place(bots[4], 10.5, -24.5, -2.8);        // Warden rotating in from the east
+    hud.feed('Quill  ▸  Rook');
     hud.setChannel('PLANTING THE SPIKE', 0.62);
   } else if (name === 'duel') {
     // Through the Longbow's scope: one Warden centred at 26 m down the Canal,
@@ -330,7 +384,7 @@ function stageShot(name) {
     body.yaw = -0.054;
     body.pitch = -0.015;
     body.hp = 76;
-    place(bots[7], -18.6, -16, Math.PI - 0.2);
+    place(bots[7], -19.2, -8, 3.1);
     place(bots[2], -13.5, 13, 0.2);
     camera.fov = 26;
     camera.updateProjectionMatrix();
@@ -344,14 +398,21 @@ function stageShot(name) {
     body.hp = 76;
   } else {
     // Cover: a mid-lane firefight over the furnace — the player connects on the
-    // Warden ahead while return fire lights the frame and the damage arc shows.
+    // Warden ahead while a second Warden fires from the left lane, a Breaker
+    // teammate pushes up the right, return fire lights the frame, the damage
+    // arc shows, and the kill feed carries the round's earlier trades.
     state.phase = PHASE.LIVE;
     state.phaseTime = 47;
     body.position.set(-5.5, 0, 9.0);
     body.yaw = -0.08;
-    place(bots[8], -4.6, 0.5, Math.PI + 0.1);
-    place(bots[1], -8.6, 11.5, 0.2);
-    place(bots[5], 5.5, -3, Math.PI - 0.4);
+    body.hp = 72;
+    loadout.grenades.shard = 1;
+    loadout.grenades.flare = 1;
+    place(bots[8], -4.6, 0.5, Math.PI + 0.1);   // Tarn, the Warden ahead — the player's target
+    place(bots[5], -7.8, 3.8, 2.9);             // Ivers, second Warden close on the left, firing back
+    place(bots[1], -1.2, 2.8, 0.15);            // Onyx, Breaker teammate pushing the right
+    hud.feed('Ivers  ▸  Sable');
+    hud.feed('Vex  ▸  Moss');
     eyePos.set(body.position.x, body.position.y + body.eye, body.position.z);
     syncCamera();
     aimDir.copy(camDir);
@@ -361,12 +422,20 @@ function stageShot(name) {
     effects.muzzle(shakeVec);
     const foe = bots[8];
     foe.target = rounds.playerProxy;
+    // staging guard: the return fire lights the frame but must not kill the
+    // staged player — helmet-tier armor and a deep health pool until both
+    // shots are resolved, then the displayed values are restored below
+    rounds.playerProxy.armor = 2;
+    body.hp = 200;
     rounds.combat.botFire(foe, rounds.playerProxy, 9);
+    const foe2 = bots[5];
+    foe2.target = rounds.playerProxy;
+    rounds.combat.botFire(foe2, rounds.playerProxy, 6);   // Ivers fires back from the left: a second tracer, crossing the first
+    rounds.playerProxy.armor = 0;
     hud.hurtFrom(0.03);
     body.hp = 72;
   }
   effects.update(0.001);   // settle tracer opacity and flashes for the frozen frame
-  hud.banner('', '', 0);   // clear the boot banner so the staged frame is clean
   hud.update(body, rounds.combatants);
   let painted = 0;
   const paint = () => {

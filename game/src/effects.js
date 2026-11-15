@@ -2,6 +2,19 @@
 // is allocated per shot), pooled glow sprites for muzzle flashes and impact flashes,
 // grenades with real arcs and bounces, Veil smoke that genuinely blocks sightlines,
 // explosion flashes, and the Spike prop with its blinking armed light.
+//
+// POOLS AND LIFETIMES: the per-shot effects are fixed-size pools, recycled
+// round-robin with zero allocation in the fire path — 28 tracers (a 1 px
+// additive line plus a stretched additive bolt mesh on the same path, 0.09 s
+// life, coloured by the shooter), 12 glow sprites (muzzle and impact flashes,
+// 0.07-0.09 s), 420 spark particles in one Points cloud (gravity, floor
+// clamp). Grenades and smokes are created per throw and removed when spent:
+// a grenade flies at 16 m/s + 4.5 up with floor bounces at 0.38 restitution
+// and wall bounces at 0.4 (fuses: Shard 1.7 s, Flare 1.15 s, Veil 0.9 s); a
+// Veil smoke is a 2.6 m sphere living 13 s, and the same smoke list is what
+// bot vision tests for occlusion. One shared point light serves every muzzle
+// flash (peak intensity 30, 0.055 s); explosions get their own (peak 90, with
+// an expanding shockwave ring).
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 
@@ -27,8 +40,12 @@ function glowTexture() {
 }
 
 export function createEffects(scene, colliders) {
-  // tracers: one Line per shot, recycled
+  // tracers: one Line per shot plus a stretched additive bolt mesh on the same path.
+  // A WebGL line is one pixel wide and vanishes in a still; the bolt (a unit box
+  // scaled to the shot's length and 0.035 m thick) gives the tracer a body, so a
+  // frozen frame shows solid light streaks in the shooter's team colour.
   const tracers = [];
+  const boltGeo = new THREE.BoxGeometry(1, 1, 1);
   for (let i = 0; i < TRACER_COUNT; i += 1) {
     const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
     const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
@@ -36,9 +53,16 @@ export function createEffects(scene, colliders) {
     line.visible = false;
     line.frustumCulled = false;
     scene.add(line);
-    tracers.push({ line, left: 0 });
+    const bolt = new THREE.Mesh(boltGeo, new THREE.MeshBasicMaterial({
+      color: PALETTE.tracer, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    bolt.visible = false;
+    bolt.frustumCulled = false;
+    scene.add(bolt);
+    tracers.push({ line, bolt, left: 0 });
   }
   let tracerCursor = 0;
+  const boltMid = new THREE.Vector3();
+  const boltFrom = new THREE.Vector3();
 
   // flash sprites: one pooled glow billboard per muzzle flash / impact flash, plus a
   // single shared point light that jumps to the newest muzzle so shots light the world
@@ -133,6 +157,17 @@ export function createEffects(scene, colliders) {
       attr.needsUpdate = true;
       slot.line.material.color.setHex(color);
       slot.line.visible = true;
+      // the bolt: a thin box stretched along the shot, starting ~1.5 m out so the
+      // shooter's own tracer does not fill the lens at the muzzle
+      const len = from.distanceTo(to);
+      const skip = Math.min(1.5, len * 0.3);
+      boltFrom.lerpVectors(from, to, len > 0.001 ? skip / len : 0);
+      boltMid.addVectors(boltFrom, to).multiplyScalar(0.5);
+      slot.bolt.position.copy(boltMid);
+      slot.bolt.lookAt(to);
+      slot.bolt.scale.set(0.02, 0.02, Math.max(0.1, len - skip));
+      slot.bolt.material.color.setHex(color);
+      slot.bolt.visible = true;
       slot.left = 0.09;
     },
     // A brief additive glow billboard: muzzle flashes, impact flashes, explosion cores.
@@ -237,7 +272,8 @@ export function createEffects(scene, colliders) {
         if (!slot.line.visible) continue;
         slot.left -= dt;
         slot.line.material.opacity = Math.max(0, slot.left / 0.09);
-        if (slot.left <= 0) slot.line.visible = false;
+        slot.bolt.material.opacity = Math.max(0, slot.left / 0.09) * 0.55;
+        if (slot.left <= 0) { slot.line.visible = false; slot.bolt.visible = false; }
       }
       for (const slot of flashes) {
         if (!slot.sprite.visible) continue;
